@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mandatehub — provable autonomous M2M payment</title>
+  <meta name="description" content="A self-contained verification core for provable autonomous machine-to-machine payment: budget-bounded intent mandates + best-execution surplus recapture, offline-verifiable.">
+  <style>
+    :root { --fg:#0f1720; --muted:#54636d; --bg:#ffffff; --card:#f6f8fa; --line:#e3e8ee; --accent:#1a56db; }
+    @media (prefers-color-scheme: dark) {
+      :root { --fg:#e6edf3; --muted:#9aa7b2; --bg:#0d1117; --card:#161b22; --line:#26303b; --accent:#6ea8ff; }
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+           color:var(--fg); background:var(--bg); }
+    .wrap { max-width:820px; margin:0 auto; padding:64px 20px 80px; }
+    header h1 { font-size:2.4rem; margin:0 0 .2em; letter-spacing:-.02em; }
+    .tag { color:var(--muted); font-size:1.15rem; margin:0 0 1.6em; }
+    .badges a { text-decoration:none; margin-right:.4em; }
+    .badges img { vertical-align:middle; }
+    .lead { font-size:1.1rem; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:32px 0; }
+    @media (max-width:640px) { .grid { grid-template-columns:1fr; } }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px 20px; }
+    .card h3 { margin:.1em 0 .4em; font-size:1.05rem; }
+    .card p { margin:0; color:var(--muted); font-size:.96rem; }
+    h2 { margin-top:2.2em; font-size:1.35rem; letter-spacing:-.01em; }
+    a { color:var(--accent); }
+    ul.links { list-style:none; padding:0; }
+    ul.links li { padding:6px 0; border-bottom:1px solid var(--line); }
+    pre { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; overflow:auto; font-size:.92rem; }
+    code { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+    .note { color:var(--muted); font-size:.9rem; border-left:3px solid var(--line); padding:.2em 0 .2em 14px; margin:1.4em 0; }
+    footer { margin-top:3em; color:var(--muted); font-size:.88rem; border-top:1px solid var(--line); padding-top:1.2em; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>mandatehub</h1>
+      <p class="tag">Provable autonomous machine-to-machine payment.</p>
+      <p class="badges">
+        <a href="https://github.com/Hiroshi-Ichiyanagi/mandatehub/actions/workflows/ci.yml"><img src="https://github.com/Hiroshi-Ichiyanagi/mandatehub/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+        <a href="https://github.com/Hiroshi-Ichiyanagi/mandatehub/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache-2.0"></a>
+        <img src="https://img.shields.io/badge/Python-3.11%2B-blue.svg" alt="Python 3.11+">
+      </p>
+    </header>
+
+    <p class="lead">
+      A small, self-contained <strong>verification core</strong>. It does not execute payments
+      on chain — it makes an autonomous agent's spending <strong>provably bounded,
+      best-executed, and honestly settled</strong>, as deterministic, offline-verifiable
+      artifacts. Standard library only, zero runtime dependencies.
+    </p>
+
+    <div class="grid">
+      <div class="card">
+        <h3>Intent / account abstraction (④)</h3>
+        <p>A <strong>mandate</strong> is a pre-funded, budget-bounded authorization. An agent
+        settles intents within it, and a <code>ProofOfMandate</code> lets anyone verify offline
+        that the budget was never exceeded.</p>
+      </div>
+      <div class="card">
+        <h3>Best execution / recapture (③)</h3>
+        <p>A solver auction fills at the best disclosed cost; the price-improvement
+        <strong>surplus</strong> is split integer-exactly, with a best-execution proof and a
+        surplus-recapture proof.</p>
+      </div>
+    </div>
+
+    <h2>Quick start</h2>
+    <pre><code>pip install mandatehub            # once published
+# or, from source:
+pip install -e ".[test]"
+python -m pytest -q               # 223 passed</code></pre>
+
+    <h2>Design identity</h2>
+    <ul>
+      <li><strong>Deterministic + offline-verifiable</strong> — explicit time, never the wall clock; same inputs → byte-identical hashes.</li>
+      <li><strong>Append-only double-entry</strong> — integer minor units, every transaction balances to zero per currency.</li>
+      <li><strong>No on-chain execution, no HTTP, no keys</strong> in core — it proves the accounting; the chain pieces live around it.</li>
+    </ul>
+
+    <h2>Read the specs &amp; docs</h2>
+    <ul class="links">
+      <li><a href="https://github.com/Hiroshi-Ichiyanagi/mandatehub">GitHub repository</a> — source, examples, CI</li>
+      <li><a href="https://github.com/Hiroshi-Ichiyanagi/mandatehub/blob/main/specs/mandate.md"><code>mandate</code> model spec</a> — the authorization model &amp; ProofOfMandate</li>
+      <li><a href="https://github.com/Hiroshi-Ichiyanagi/mandatehub/blob/main/specs/best-exec.md"><code>best-exec</code> scheme spec</a> — ③ as an x402 scheme</li>
+      <li><a href="https://github.com/Hiroshi-Ichiyanagi/mandatehub/blob/main/docs/X402.md">x402 compatibility &amp; roadmap</a></li>
+      <li><a href="https://github.com/Hiroshi-Ichiyanagi/mandatehub/blob/main/ROADMAP.md">Roadmap</a> — release &amp; protocol tracks, hard gates</li>
+    </ul>
+
+    <p class="note">
+      mandatehub is an independent, <strong>early, unproven</strong> project — no production
+      adoption, and it moves no real money. Nothing here is legal or financial advice.
+      Mainnet is gated on an independent audit, production hardening, and legal review.
+    </p>
+
+    <footer>
+      Apache-2.0 · built by Hiroshi Ichiyanagi ·
+      <a href="https://github.com/Hiroshi-Ichiyanagi/mandatehub">github.com/Hiroshi-Ichiyanagi/mandatehub</a>
+    </footer>
+  </div>
+</body>
+</html>

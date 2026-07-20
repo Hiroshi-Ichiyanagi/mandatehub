@@ -48,7 +48,10 @@ discipline for both — and the staged path from this library to a running facil
 - **R5 — Docs site + reference deployment.** A docs site and landing page on Cloudflare Pages
   under your domain, plus a hosted **testnet** reference facilitator / resource-server on
   Cloudflare Workers — aligning with x402's edge deployment (x402 Foundation, Cloudflare
-  Agents). *(You: Cloudflare account + domain; I: the build + config.)*
+  Agents). The build + config are prepared: a self-contained static landing ([`site/`](site/)),
+  a Python Worker that reuses `serve_once` ([`deploy/cloudflare/`](deploy/cloudflare/)), and the
+  runbook ([`docs/DEPLOY_CLOUDFLARE.md`](docs/DEPLOY_CLOUDFLARE.md)). Durable-ledger (D1) is
+  gate H2. *(You: Cloudflare account + domain; I: the build + config.)*
 
 ## Protocol track — mature the payment path (testnet first)
 
