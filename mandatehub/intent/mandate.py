@@ -557,6 +557,23 @@ class IntentSettlementEngine:
 
         return True, "OK", remaining_before
 
+    def preauthorize(
+        self,
+        *,
+        mandate_id: str,
+        intent_id: str,
+        payee_account_id: str,
+        amount: Money,
+        purpose: str,
+        at: datetime,
+        nonce: int | None = None,
+    ) -> tuple[bool, str, int]:
+        """副作用なしの認可ドライラン。(ok, reason, remaining_before) を返す。
+
+        x402 ファシリテーターの /verify（元帳を変えずに支払い可否を判定）に使う。
+        """
+        return self._authorize(mandate_id, intent_id, amount, purpose, payee_account_id, at, nonce)
+
     def _settlement_metadata(
         self,
         mandate: Mandate,

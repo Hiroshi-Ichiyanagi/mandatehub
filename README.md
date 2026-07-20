@@ -163,7 +163,22 @@ python -m pytest -q
 python examples/best_execution_recapture.py     # solver auction + surplus recapture
 python examples/session_key_submandate.py       # session-key sub-mandates, non-leakage
 python examples/intent_mandate_settlement.py    # budget-bounded settlement + proof
+python examples/x402_facilitator.py             # live HTTP 402 flow gated by a mandate
 ```
+
+## Running it: an x402-compatible facilitator
+
+[x402](https://github.com/coinbase/x402) is Coinbase's HTTP-`402` payment protocol for agents
+(live on Base with USDC). mandatehub speaks it as the **mandate + proof layer inside a
+facilitator**: `mandatehub.x402` provides a `Facilitator` with `verify` / `settle`, the
+`PAYMENT-REQUIRED` / `PAYMENT-SIGNATURE` / `PAYMENT-RESPONSE` header protocol, and the `exact`
+scheme — so a resource server can charge an agent over HTTP 402 while the mandate decides
+*whether the agent may pay* and a `ProofOfMandate` rides back in the response.
+
+Settlement is behind a `SettlementAdapter`: today the self-contained ledger adapter (no real
+money); swapping in an on-chain adapter (a real x402 facilitator on Base) is the only change
+to move real value. `python examples/x402_facilitator.py` runs the whole flow over a real
+localhost server. See [docs/X402.md](docs/X402.md) for the phased roadmap to real settlement.
 
 ## Layout
 
@@ -174,6 +189,7 @@ mandatehub/
   transparency/   Merkle tree + hash-chained audit log + as-of commitment (vendored)
   intent/         mandate settlement + policy/session-keys/batch/lifecycle + proofs (4)
   execution/      solver auction, surplus recapture, arbitrage attribution + proofs (3)
+  x402/           x402-compatible facilitator (HTTP 402 verify/settle + mandate gate)
 tests/            unit tests + determinism / import-discipline guards
 ```
 

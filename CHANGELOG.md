@@ -30,6 +30,12 @@ Initial release. Early and unproven; no production adoption.
   through a solver auction and recapture the surplus in one balanced transaction, holding
   every budget invariant (INV-9: budget-side proof fields byte-identical to a plain
   settlement). Cross-currency (Model B) via per-currency venue-clearing accounts.
+- **`mandatehub.x402`** — an [x402](https://github.com/coinbase/x402)-compatible facilitator:
+  `Facilitator.verify` / `settle`, the `PAYMENT-REQUIRED` / `PAYMENT-SIGNATURE` /
+  `PAYMENT-RESPONSE` header protocol, and the `exact` scheme. Settlement is pluggable via a
+  `SettlementAdapter` (default: self-contained ledger settlement, no real money) so a real
+  on-chain facilitator can be dropped in. A live HTTP example runs the whole `402 → pay → 200
+  + ProofOfMandate` flow. See [docs/X402.md](docs/X402.md) for the phased roadmap.
 - Determinism discipline (explicit time only; never `datetime.now()` on a proof/settlement
   path), verified by static (AST) and runtime guards, plus an import-discipline guard that
   `execution/` never imports `intent/`.
