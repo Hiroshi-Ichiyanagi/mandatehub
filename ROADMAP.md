@@ -59,7 +59,11 @@ discipline for both — and the staged path from this library to a running facil
   (atomic split, nonce binding, no rebate withholding) is **out of core and unbuilt** — gate
   H1. Design → implement → adversarial review: done.
 - **P-live — Testnet validation.** Run `examples/x402_live_smoke.py` against a real facilitator
-  on **Base Sepolia**, then a full `402 → pay → settle → proof` loop on testnet.
+  on **Base Sepolia**, then a full `402 → pay → settle → proof` loop on testnet. An offline
+  `examples/x402_live_preflight.py` validates the client wiring (env, https guard, payload
+  build) before any real call, and [`docs/TESTNET.md`](docs/TESTNET.md) is the step-by-step
+  runbook. *(You: facilitator URL + agent key + testnet USDC; I: the preflight, runbook, and
+  client.)*
 
 ## Hard gates before mainnet / real money
 
