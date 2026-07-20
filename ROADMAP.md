@@ -1,0 +1,68 @@
+# Roadmap
+
+These are **directions, not promises**. mandatehub is early and exploratory; there is no
+production adoption and APIs may change. The plan below mirrors how x402 went public — an
+open protocol with a spec, SDK, docs, examples, and a reference facilitator — scaled to an
+independent, early project, and **honest about the hard gates before any real money moves**.
+
+Two tracks run in parallel: **Release** (make the open-source project public — safe, no real
+value) and **Protocol** (mature the payment path — testnet first, mainnet last).
+
+## Done (the verification core)
+
+- **Intent / account abstraction (4)** — `Mandate` + `IntentSettlementEngine`, spend policy,
+  session keys, batch, lifecycle, replay/monotonic-time, `ProofOfMandate` / portfolio proof.
+- **Best execution / MEV-arbitrage recapture (3)** — solver auction, integer-exact surplus
+  split, `ProofOfBestExecution` / `ProofOfSurplusRecapture`, the `settle_via_auction` bridge.
+- **x402 Phase 1** — an x402-shaped facilitator (verify/settle, mandate-gated) + a live HTTP
+  402 demo.
+- **x402 Phase 2** — a real x402 **v1** client (`exact`/EVM, EIP-3009 + EIP-712) with a
+  security-hardened `RemoteFacilitatorAdapter`, tested against stubs.
+
+200 tests, 6 examples, determinism + import-discipline guards, zero third-party runtime deps
+(EVM signing isolated behind the optional `[evm]` extra).
+
+## Release track — take it public "the x402 way"
+
+- **R1 — Open-source the repository (Apache-2.0).** Public GitHub with README, docs,
+  examples, spec, and CI. *(You: create the empty repo + grant the Claude GitHub app access;
+  then I push. Publishing is your call — it distributes the project under your name.)*
+- **R2 — Protocol spec (`specs/`).** A written spec for the mandate model and the x402
+  integration (`exact` today, `best-exec` when Phase 3 lands), in the style of x402's `specs/`.
+- **R3 — Community + release hygiene.** `CONTRIBUTING`, `SECURITY`, `CODE_OF_CONDUCT`,
+  `ROADMAP`, issue/PR templates, and a signed-release + PyPI trusted-publishing workflow.
+- **R4 — Publish to PyPI.** `pip install mandatehub` (+ `mandatehub[evm]`). *(You own the PyPI
+  project + configure the trusted publisher pointing at the repo; the workflow does the rest.)*
+- **R5 — Docs site + reference deployment.** A docs site and landing page on Cloudflare Pages
+  under your domain, plus a hosted **testnet** reference facilitator / resource-server on
+  Cloudflare Workers — aligning with x402's edge deployment (x402 Foundation, Cloudflare
+  Agents). *(You: Cloudflare account + domain; I: the build + config.)*
+
+## Protocol track — mature the payment path (testnet first)
+
+- **P3 — `best-exec` x402 scheme (in design).** Expose (3) as an x402 scheme: the facilitator
+  best-executes within the user's max and rebates the surplus, with both proofs in the
+  response. Design → implement → adversarial review.
+- **P-live — Testnet validation.** Run `examples/x402_live_smoke.py` against a real facilitator
+  on **Base Sepolia**, then a full `402 → pay → settle → proof` loop on testnet.
+
+## Hard gates before mainnet / real money
+
+Publishing the open-source project is safe. **Moving real value is not, until:**
+
+- **H1 — Independent security review / audit** of the payment, settlement, and key-handling
+  paths (the adversarial-review passes so far are internal, not a substitute for an audit).
+- **H2 — Production hardening** — durable storage (Postgres via the `LedgerStorage` protocol),
+  key management / KMS, auth, rate limiting, monitoring, incident runbooks, fail-closed on
+  settlement saturation.
+- **H3 — Legal / compliance review** — moving stablecoin value has regulatory implications;
+  get counsel before mainnet. This is not legal advice.
+
+Only after H1–H3: mainnet, real USDC.
+
+## Honest status
+
+mandatehub is an **independent, early, unproven** project — not backed by any foundation or
+institution, and with no production adoption. Nothing here is legal or financial advice. The
+release track is publishing open-source software; the protocol/mainnet track is gated on the
+real-world reviews above.

@@ -219,6 +219,12 @@ product and **not** novel cryptography — it is a clean assembly of standard pr
 - **No HTTP / serving layer, no on-chain anchoring** (both can be layered on top).
 - **Early and unproven.** v0.1.0, no production adoption, APIs may change.
 
+## Project
+
+- [Architecture](docs/ARCHITECTURE.md) · [Intent mandates](docs/INTENT_MANDATES.md) · [Best execution & recapture](docs/EXECUTION_RECAPTURE.md) · [x402 compatibility & roadmap](docs/X402.md)
+- [Roadmap](ROADMAP.md) — the public-release + protocol tracks, and the hard gates before mainnet
+- [Contributing](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Security](SECURITY.md)
+
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE).
