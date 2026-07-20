@@ -18,6 +18,7 @@ python examples/x402_remote_settle.py           # real x402 v1 exact/EVM payload
 | `session_key_submandate.py` | Delegate bounded sub-budgets to two session keys drawing on one root mandate; every ancestor's budget is re-derived from the ledger, so combined descendant spend can never exceed the parent. |
 | `x402_facilitator.py` | Run a real localhost HTTP server that charges via the x402 `402 Payment Required` handshake, gated by a mandate: `402 → pay → 200 + ProofOfMandate`, and a replayed payment is rejected by the mandate over HTTP. |
 | `x402_remote_settle.py` | Build a real x402 **v1** `exact`/EVM payment payload (EIP-3009 + EIP-712, signed by a `StubSigner`) and call a facilitator's `/verify` and `/settle` over HTTP via `RemoteFacilitatorAdapter` — against an in-process stub, so it runs with no network and no keys. Shows the exact wire the live CDP facilitator speaks. |
+| `x402_live_smoke.py` | **(network; not in the offline suite)** Sign a real payload with `EthAccountSigner` (`pip install 'mandatehub[evm]'`) and hit a **real** facilitator's `/verify` (opt-in `/settle`) using your own env-supplied facilitator URL + agent key. Confirms the v1 assumptions against Base Sepolia. |
 
 See [../docs/INTENT_MANDATES.md](../docs/INTENT_MANDATES.md) and
 [../docs/EXECUTION_RECAPTURE.md](../docs/EXECUTION_RECAPTURE.md) for the model these demonstrate.
