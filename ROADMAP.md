@@ -36,7 +36,8 @@ discipline for both — and the staged path from this library to a running facil
   then I push. Publishing is your call — it distributes the project under your name.)*
 - **R2 — Protocol spec (`specs/`).** A written spec for the mandate model and the x402
   integration, in the style of x402's `specs/`. The `best-exec` scheme is specified in
-  [`specs/best-exec.md`](specs/best-exec.md); a mandate-model spec is still to write.
+  [`specs/best-exec.md`](specs/best-exec.md) and the mandate model in
+  [`specs/mandate.md`](specs/mandate.md).
 - **R3 — Community + release hygiene.** `CONTRIBUTING`, `SECURITY`, `CODE_OF_CONDUCT`,
   `ROADMAP`, issue/PR templates, and a signed-release + PyPI trusted-publishing workflow.
 - **R4 — Publish to PyPI.** `pip install mandatehub` (+ `mandatehub[evm]`). *(You own the PyPI
