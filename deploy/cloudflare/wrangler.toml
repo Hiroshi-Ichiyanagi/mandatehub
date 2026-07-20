@@ -1,0 +1,29 @@
+# Cloudflare Workers config for the mandatehub testnet reference resource-server.
+#
+# This is a Python Worker: it reuses mandatehub.x402.serve_once (a socket-free pure
+# function) unchanged. It is a TESTNET DEMO tier — see deploy/cloudflare/README.md and
+# docs/DEPLOY_CLOUDFLARE.md. It moves no mainnet value; durable storage (D1) is gate H2.
+#
+# Deploy (owner): `wrangler login` then `wrangler deploy` from this directory.
+
+name = "mandatehub-testnet"
+main = "worker.py"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["python_workers"]
+
+# Non-secret config. The mandate/resource are demo values; real testnet settlement
+# needs the secrets below.
+[vars]
+MANDATEHUB_NETWORK = "base-sepolia"
+MANDATEHUB_MAX_AMOUNT = "10000"          # 0.01 USDC (6 decimals) — the 402 ceiling
+MANDATEHUB_RESOURCE = "https://mandatehub-testnet.workers.dev/quote"
+
+# Secrets (set with `wrangler secret put <NAME>` — NEVER commit these):
+#   MANDATEHUB_FACILITATOR_URL   — a real Base Sepolia x402 facilitator (enables /settle)
+#   MANDATEHUB_AGENT_PRIVATE_KEY — testnet signer key (throwaway wallet only)
+#
+# Durable ledger (gate H2) would bind here, e.g. a D1 database:
+# [[d1_databases]]
+# binding = "LEDGER"
+# database_name = "mandatehub-ledger"
+# database_id = "<owner-provisions-this>"
