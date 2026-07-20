@@ -32,7 +32,32 @@ from mandatehub.x402.types import (
     VerifyResponse,
 )
 
+# --- Phase 2: real x402 v1 client (exact/EVM) ---
+from mandatehub.x402.eip712 import (
+    BASE_SEPOLIA_CHAIN_ID,
+    BASE_SEPOLIA_USDC,
+    USDC_DECIMALS,
+    build_transfer_with_authorization,
+    chain_id_for,
+)
+from mandatehub.x402.exact_evm import ExactEvmPayloadBuilder
+from mandatehub.x402.remote import FacilitatorError, RemoteFacilitatorAdapter
+from mandatehub.x402.signer import NullSigner, Signer, SignerError, StubSigner
+from mandatehub.x402.wire import (
+    EIP3009Authorization,
+    ExactEvmPayload,
+    FacilitatorSettleResult,
+    FacilitatorVerifyResult,
+    X402PaymentPayload,
+    X402PaymentRequirements,
+    decode_x_payment,
+    decode_x_payment_response,
+    encode_x_payment,
+    encode_x_payment_response,
+)
+
 __all__ = [
+    # Phase 1: mandatehub's own facilitator (ledger/mock)
     "Facilitator",
     "SettlementAdapter",
     "LedgerSettlementAdapter",
@@ -52,4 +77,27 @@ __all__ = [
     "HEADER_PAYMENT_REQUIRED",
     "HEADER_PAYMENT_SIGNATURE",
     "HEADER_PAYMENT_RESPONSE",
+    # Phase 2: real x402 v1 client (exact/EVM)
+    "RemoteFacilitatorAdapter",
+    "FacilitatorError",
+    "ExactEvmPayloadBuilder",
+    "Signer",
+    "NullSigner",
+    "StubSigner",
+    "SignerError",
+    "X402PaymentRequirements",
+    "X402PaymentPayload",
+    "ExactEvmPayload",
+    "EIP3009Authorization",
+    "FacilitatorVerifyResult",
+    "FacilitatorSettleResult",
+    "encode_x_payment",
+    "decode_x_payment",
+    "encode_x_payment_response",
+    "decode_x_payment_response",
+    "build_transfer_with_authorization",
+    "chain_id_for",
+    "BASE_SEPOLIA_CHAIN_ID",
+    "BASE_SEPOLIA_USDC",
+    "USDC_DECIMALS",
 ]

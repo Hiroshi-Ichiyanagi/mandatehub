@@ -41,6 +41,9 @@ dependencies = []
 
 [project.optional-dependencies]
 test = ["pytest"]
+# Real EVM signing for the x402 exact scheme (Phase 2). The core stays stdlib-only;
+# this is only needed for mandatehub.signers.EthAccountSigner.
+evm = ["eth-account>=0.10"]
 
 [project.urls]
 Homepage = "https://github.com/Hiroshi-Ichiyanagi/mandatehub"

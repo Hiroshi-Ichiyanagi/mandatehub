@@ -36,6 +36,15 @@ Initial release. Early and unproven; no production adoption.
   `SettlementAdapter` (default: self-contained ledger settlement, no real money) so a real
   on-chain facilitator can be dropped in. A live HTTP example runs the whole `402 → pay → 200
   + ProofOfMandate` flow. See [docs/X402.md](docs/X402.md) for the phased roadmap.
+- **Phase 2 — real x402 v1 client** (`mandatehub.x402`): `RemoteFacilitatorAdapter` speaks the
+  live facilitator protocol (`/verify`, `/settle`) over `urllib`, and `ExactEvmPayloadBuilder`
+  constructs the `exact`-scheme EIP-3009 + EIP-712 payment payload signed by a pluggable
+  `Signer`. Base Sepolia constants (chain id 84532, USDC, EIP-712 domain) are built in and
+  overridable. Security guards baked in: https-only, cross-host redirect refusal, secret
+  redaction, fail-closed on non-2xx/malformed/network errors, tolerant parsing. Real EVM
+  signing (`EthAccountSigner`) is isolated behind the optional `[evm]` extra so the core stays
+  stdlib-only. Verified against an in-process stub facilitator + `StubSigner` — no network, no
+  keys. See [docs/X402.md](docs/X402.md).
 - Determinism discipline (explicit time only; never `datetime.now()` on a proof/settlement
   path), verified by static (AST) and runtime guards, plus an import-discipline guard that
   `execution/` never imports `intent/`.
