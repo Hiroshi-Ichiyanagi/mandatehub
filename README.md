@@ -229,7 +229,7 @@ product and **not** novel cryptography — it is a clean assembly of standard pr
 
 ## Project
 
-- [Architecture](docs/ARCHITECTURE.md) · [Intent mandates](docs/INTENT_MANDATES.md) · [Best execution & recapture](docs/EXECUTION_RECAPTURE.md) · [x402 compatibility & roadmap](docs/X402.md) · [`best-exec` scheme spec](specs/best-exec.md)
+- [Architecture](docs/ARCHITECTURE.md) · [Intent mandates](docs/INTENT_MANDATES.md) · [Best execution & recapture](docs/EXECUTION_RECAPTURE.md) · [x402 compatibility & roadmap](docs/X402.md) · [`mandate` model spec](specs/mandate.md) · [`best-exec` scheme spec](specs/best-exec.md)
 - [Roadmap](ROADMAP.md) — the public-release + protocol tracks, and the hard gates before mainnet
 - [Operations](docs/OPERATIONS.md) — the operating discipline (charter, money-path invariants, staged path to a running facilitator)
 - [Contributing](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Security](SECURITY.md)
