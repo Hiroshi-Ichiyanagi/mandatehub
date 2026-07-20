@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mandatehub"
+version = "0.1.0"
+description = "Provable autonomous M2M payment: budget-bounded intent mandates + best-execution / surplus recapture, offline-verifiable (no on-chain oracle)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "Hiroshi Ichiyanagi", email = "280297311+Hiroshi-Ichiyanagi@users.noreply.github.com" },
+]
+keywords = [
+    "mandate",
+    "intent",
+    "account-abstraction",
+    "best-execution",
+    "mev",
+    "surplus-recapture",
+    "audit-log",
+    "merkle",
+    "autonomous-payments",
+    "m2m",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Office/Business :: Financial",
+]
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.urls]
+Homepage = "https://github.com/Hiroshi-Ichiyanagi/mandatehub"
+Repository = "https://github.com/Hiroshi-Ichiyanagi/mandatehub"
+Issues = "https://github.com/Hiroshi-Ichiyanagi/mandatehub/issues"
+Changelog = "https://github.com/Hiroshi-Ichiyanagi/mandatehub/blob/main/CHANGELOG.md"
+
+[tool.setuptools.packages.find]
+include = ["mandatehub*"]
