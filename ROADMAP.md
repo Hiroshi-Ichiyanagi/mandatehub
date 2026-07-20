@@ -40,8 +40,11 @@ discipline for both — and the staged path from this library to a running facil
   [`specs/mandate.md`](specs/mandate.md).
 - **R3 — Community + release hygiene.** `CONTRIBUTING`, `SECURITY`, `CODE_OF_CONDUCT`,
   `ROADMAP`, issue/PR templates, and a signed-release + PyPI trusted-publishing workflow.
-- **R4 — Publish to PyPI.** `pip install mandatehub` (+ `mandatehub[evm]`). *(You own the PyPI
-  project + configure the trusted publisher pointing at the repo; the workflow does the rest.)*
+- **R4 — Publish to PyPI.** `pip install mandatehub` (+ `mandatehub[evm]`). The build/publish
+  pipeline ([`release.yml`](.github/workflows/release.yml)) and the owner-setup + per-release
+  checklist ([`docs/RELEASING.md`](docs/RELEASING.md)) are ready; the build + `twine check` are
+  verified locally. *(You own the PyPI project + configure the trusted publisher pointing at
+  the repo; the workflow does the rest.)*
 - **R5 — Docs site + reference deployment.** A docs site and landing page on Cloudflare Pages
   under your domain, plus a hosted **testnet** reference facilitator / resource-server on
   Cloudflare Workers — aligning with x402's edge deployment (x402 Foundation, Cloudflare
