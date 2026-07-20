@@ -6,7 +6,9 @@ open protocol with a spec, SDK, docs, examples, and a reference facilitator — 
 independent, early project, and **honest about the hard gates before any real money moves**.
 
 Two tracks run in parallel: **Release** (make the open-source project public — safe, no real
-value) and **Protocol** (mature the payment path — testnet first, mainnet last).
+value) and **Protocol** (mature the payment path — testnet first, mainnet last). The operating
+discipline for both — and the staged path from this library to a running facilitator — is in
+[docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 ## Done (the verification core)
 

@@ -9,3 +9,12 @@ venv/
 *.db
 *.sqlite
 .DS_Store
+
+# Secrets — never commit (playbook §7). Only .env.example is allowed.
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+logs/
+*.bak
