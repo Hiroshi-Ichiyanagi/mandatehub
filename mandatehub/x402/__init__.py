@@ -32,6 +32,22 @@ from mandatehub.x402.types import (
     VerifyResponse,
 )
 
+# --- Phase 3: best-exec scheme (expose 3 as an x402 scheme; offline accounting layer) ---
+from mandatehub.x402.best_exec import (
+    SCHEME_BEST_EXEC,
+    BestExecFacilitator,
+    BestExecParams,
+    BestExecPayload,
+    BestExecResult,
+    InLedgerSettlementAdapter,
+    StubVerifier,
+    binding_digest,
+    binding_preimage,
+    build_best_exec_payload,
+    split_policy_hash,
+    verify_best_exec_response,
+)
+
 # --- Phase 2: real x402 v1 client (exact/EVM) ---
 from mandatehub.x402.eip712 import (
     BASE_SEPOLIA_CHAIN_ID,
@@ -100,4 +116,17 @@ __all__ = [
     "BASE_SEPOLIA_CHAIN_ID",
     "BASE_SEPOLIA_USDC",
     "USDC_DECIMALS",
+    # Phase 3: best-exec scheme (offline accounting layer)
+    "SCHEME_BEST_EXEC",
+    "BestExecFacilitator",
+    "BestExecParams",
+    "BestExecPayload",
+    "BestExecResult",
+    "InLedgerSettlementAdapter",
+    "StubVerifier",
+    "build_best_exec_payload",
+    "verify_best_exec_response",
+    "binding_preimage",
+    "binding_digest",
+    "split_policy_hash",
 ]

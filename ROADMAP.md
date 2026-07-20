@@ -18,8 +18,13 @@ value) and **Protocol** (mature the payment path — testnet first, mainnet last
   402 demo.
 - **x402 Phase 2** — a real x402 **v1** client (`exact`/EVM, EIP-3009 + EIP-712) with a
   security-hardened `RemoteFacilitatorAdapter`, tested against stubs.
+- **x402 Phase 3** — the `best-exec` scheme (③ as an x402 scheme): mandate-gated solver
+  auction + integer-exact surplus recapture, nonce-bound to a fixed-value EIP-3009
+  authorization, with a written spec ([`specs/best-exec.md`](specs/best-exec.md)) and offline
+  third-party re-verification. Offline accounting layer; the audited on-chain settler is out
+  of core (§ hard gates).
 
-200 tests, 6 examples, determinism + import-discipline guards, zero third-party runtime deps
+223 tests, 7 examples, determinism + import-discipline guards, zero third-party runtime deps
 (EVM signing isolated behind the optional `[evm]` extra).
 
 ## Release track — take it public "the x402 way"
@@ -28,7 +33,8 @@ value) and **Protocol** (mature the payment path — testnet first, mainnet last
   examples, spec, and CI. *(You: create the empty repo + grant the Claude GitHub app access;
   then I push. Publishing is your call — it distributes the project under your name.)*
 - **R2 — Protocol spec (`specs/`).** A written spec for the mandate model and the x402
-  integration (`exact` today, `best-exec` when Phase 3 lands), in the style of x402's `specs/`.
+  integration, in the style of x402's `specs/`. The `best-exec` scheme is specified in
+  [`specs/best-exec.md`](specs/best-exec.md); a mandate-model spec is still to write.
 - **R3 — Community + release hygiene.** `CONTRIBUTING`, `SECURITY`, `CODE_OF_CONDUCT`,
   `ROADMAP`, issue/PR templates, and a signed-release + PyPI trusted-publishing workflow.
 - **R4 — Publish to PyPI.** `pip install mandatehub` (+ `mandatehub[evm]`). *(You own the PyPI
@@ -40,9 +46,12 @@ value) and **Protocol** (mature the payment path — testnet first, mainnet last
 
 ## Protocol track — mature the payment path (testnet first)
 
-- **P3 — `best-exec` x402 scheme (in design).** Expose (3) as an x402 scheme: the facilitator
-  best-executes within the user's max and rebates the surplus, with both proofs in the
-  response. Design → implement → adversarial review.
+- **P3 — `best-exec` x402 scheme (built; offline accounting layer).** Exposes (3) as an x402
+  scheme: the facilitator best-executes within the user's max and rebates the surplus, with
+  both proofs in the response and offline third-party re-verification. Spec:
+  [`specs/best-exec.md`](specs/best-exec.md). The audited on-chain `BestExecSettler` contract
+  (atomic split, nonce binding, no rebate withholding) is **out of core and unbuilt** — gate
+  H1. Design → implement → adversarial review: done.
 - **P-live — Testnet validation.** Run `examples/x402_live_smoke.py` against a real facilitator
   on **Base Sepolia**, then a full `402 → pay → settle → proof` loop on testnet.
 

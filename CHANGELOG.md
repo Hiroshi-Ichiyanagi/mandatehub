@@ -45,6 +45,19 @@ Initial release. Early and unproven; no production adoption.
   signing (`EthAccountSigner`) is isolated behind the optional `[evm]` extra so the core stays
   stdlib-only. Verified against an in-process stub facilitator + `StubSigner` — no network, no
   keys. See [docs/X402.md](docs/X402.md).
+- **Phase 3 — `best-exec` scheme** (`mandatehub.x402.best_exec`): exposes best execution +
+  surplus recapture (③) as an x402 scheme. A `BestExecFacilitator` (`verify` / `settle`)
+  gates a solver auction on a mandate and recaptures the surplus in one balanced settlement,
+  reusing `run_auction` / `compute_split` / `settle_via_auction` / `ProofOf*` unchanged. The
+  fixed-value EIP-3009 authorization's **nonce commits to the full binding** (settler, payTo,
+  rebate/operator sinks, split-policy hash, objective, intent, window, chain), and `verify`
+  cross-checks **every** bound field — not just the digest. `verify_best_exec_response` lets a
+  third party recompute the accounting from the response alone (auction rerun, independent
+  no-worse-than-disclosed, candidates Merkle root, integer-exact split, binding digest = signed
+  nonce). Written spec in [specs/best-exec.md](specs/best-exec.md); example
+  `examples/x402_best_exec.py`. Offline accounting layer only — the audited on-chain
+  `BestExecSettler` contract is out of core and unbuilt (`settlementPlane:"in-ledger"` says so),
+  a hard gate before real value.
 - Determinism discipline (explicit time only; never `datetime.now()` on a proof/settlement
   path), verified by static (AST) and runtime guards, plus an import-discipline guard that
   `execution/` never imports `intent/`.

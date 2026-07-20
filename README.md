@@ -164,6 +164,7 @@ python examples/best_execution_recapture.py     # solver auction + surplus recap
 python examples/session_key_submandate.py       # session-key sub-mandates, non-leakage
 python examples/intent_mandate_settlement.py    # budget-bounded settlement + proof
 python examples/x402_facilitator.py             # live HTTP 402 flow gated by a mandate
+python examples/x402_best_exec.py               # best-exec x402 scheme + offline re-verify
 ```
 
 ## Running it: an x402-compatible facilitator
@@ -179,6 +180,13 @@ Settlement is behind a `SettlementAdapter`: today the self-contained ledger adap
 money); swapping in an on-chain adapter (a real x402 facilitator on Base) is the only change
 to move real value. `python examples/x402_facilitator.py` runs the whole flow over a real
 localhost server. See [docs/X402.md](docs/X402.md) for the phased roadmap to real settlement.
+
+It also speaks a second scheme, **`best-exec`** — ③ exposed as an x402 scheme: the facilitator
+best-executes within the resource server's max and rebates the surplus, with both proofs and
+offline third-party re-verification in the response. The fixed-value EIP-3009 authorization's
+nonce commits to the whole binding, so the operator can't repoint funds or skim the rebate.
+Spec: [specs/best-exec.md](specs/best-exec.md); the audited on-chain settler is a hard gate
+before real value.
 
 ## Layout
 
@@ -221,7 +229,7 @@ product and **not** novel cryptography — it is a clean assembly of standard pr
 
 ## Project
 
-- [Architecture](docs/ARCHITECTURE.md) · [Intent mandates](docs/INTENT_MANDATES.md) · [Best execution & recapture](docs/EXECUTION_RECAPTURE.md) · [x402 compatibility & roadmap](docs/X402.md)
+- [Architecture](docs/ARCHITECTURE.md) · [Intent mandates](docs/INTENT_MANDATES.md) · [Best execution & recapture](docs/EXECUTION_RECAPTURE.md) · [x402 compatibility & roadmap](docs/X402.md) · [`best-exec` scheme spec](specs/best-exec.md)
 - [Roadmap](ROADMAP.md) — the public-release + protocol tracks, and the hard gates before mainnet
 - [Contributing](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Security](SECURITY.md)
 
