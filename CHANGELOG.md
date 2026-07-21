@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 APIs may change while the project is pre-1.0.
 
+## [Unreleased]
+
+### Fixed
+- `RemoteFacilitatorAdapter` now sends a real `User-Agent` (`mandatehub-x402/1`) by default —
+  the stdlib default `Python-urllib/x.y` UA is rejected with HTTP 403 (Cloudflare bot
+  protection, error 1010) by public facilitators, observed live against `x402.org`'s
+  `/verify`. A `header_hook` can still override it. With this fix, a live no-key wire check
+  against the real `x402.org` facilitator round-trips and returns
+  `invalid_exact_evm_signature` — confirming the v1 `exact`/EVM payload is parsed end-to-end
+  (the P-live wire-format milestone; see `docs/TESTNET.md`).
+
 ## [0.1.0]
 
 Initial release. Early and unproven; no production adoption.
