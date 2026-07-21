@@ -9,8 +9,13 @@ Status: **built and proven end-to-end.** `mandatehub.storage_postgres.PostgresLe
 (the `[postgres]` extra) is a shared-store ledger with the atomic unique-PK claim; the engine
 settle path uses it. `tests/test_postgres_storage.py` runs the full engine flow AND 8 real
 concurrent processes settling the same intent through the engine on one Postgres — exactly one
-settles. Remaining for a full multi-worker *operator*: a shared **audit** store (the money-path
-ledger safety is done; audit is still per-process).
+settles. All three settle paths now claim: `settle_intent`, `settle_batch` (claims every intent after
+authorization, before posting — a mid-batch claim failure denies the whole batch and leaves
+earlier claims burned, fail-closed by design), and `settle_via_auction` (claims after all
+deny-checks so a legitimate denial like `NO_WINNING_BID` never burns the intent). `try_claim`
+takes the explicit settlement time (`at=`) — no wall-clock on the money path (enforced by the
+determinism guard test). Remaining for a full multi-worker *operator*: a shared **audit**
+store (the money-path ledger safety is done; audit is still per-process).
 
 ## 1. The race (why you cannot just run two operators)
 

@@ -63,7 +63,7 @@ above (gate H2). Never rely on in-process serialization alone.
 - **test → (deploy) → verify, every change (§3.2).** `py_compile`/import → functional test
   (real behavior, both happy *and* error paths for the money-path) → for the service, deploy
   then verify externally (public URL) *and* internally (container/logs/config). This repo's
-  half is already enforced: 244 tests + runnable examples + determinism/import guards.
+  half is already enforced: 246 tests + runnable examples + determinism/import guards.
 - **Staged deploy (§3.3).** Layer by risk: Stage 1 = behavior-invariant hardening, Stage 2 =
   behavior-changing — separate deploys, each verified.
 - **Drift monitoring (§3.4).** For the deployment: sha256 source vs the deployed `/app` to

@@ -318,3 +318,22 @@ class TestCdpHeaderHook:
         assert calls[1]["request_path"] == "/platform/v2/x402/settle"
         # 鍵はヘッダに一切載らない
         assert "ksec" not in json.dumps(hdrs)
+
+
+class TestV2WireCompat:
+    def test_from_wire_accepts_v2_amount_and_caip2(self):
+        # x402 v2 challenge shape: `amount` + CAIP-2 network (as served by CDP-listed resources)
+        d = {"scheme": "exact", "network": "eip155:8453", "amount": "10000",
+             "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", "payTo": "0x" + "11" * 20,
+             "resource": "https://x/quote-v2", "maxTimeoutSeconds": 60,
+             "extra": {"name": "USD Coin", "version": "2"}}
+        r = X402PaymentRequirements.from_wire(d)
+        assert r.max_amount_required == "10000" and r.network == "eip155:8453"
+        from mandatehub.x402.eip712 import chain_id_for
+        assert chain_id_for("eip155:8453") == 8453
+        assert chain_id_for("eip155:84532") == 84532
+
+    def test_from_wire_missing_amount_is_clear_error(self):
+        with pytest.raises(KeyError, match="maxAmountRequired/amount"):
+            X402PaymentRequirements.from_wire({"scheme": "exact", "network": "base",
+                "asset": "0x", "payTo": "0x", "resource": "r", "maxTimeoutSeconds": 60})

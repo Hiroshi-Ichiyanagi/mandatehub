@@ -128,10 +128,14 @@ class X402PaymentRequirements:
 
     @classmethod
     def from_wire(cls, d: dict[str, Any]) -> "X402PaymentRequirements":
+        # v1 は maxAmountRequired、x402 v2 は amount。どちらも無ければ明確に落とす。
+        amount = d.get("maxAmountRequired", d.get("amount"))
+        if amount is None:
+            raise KeyError("payment requirements missing maxAmountRequired/amount")
         return cls(
             scheme=d["scheme"],
             network=d["network"],
-            max_amount_required=str(d["maxAmountRequired"]),
+            max_amount_required=str(amount),
             asset=d["asset"],
             pay_to=d["payTo"],
             resource=d["resource"],

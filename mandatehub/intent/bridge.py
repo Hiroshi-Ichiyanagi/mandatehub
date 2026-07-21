@@ -200,6 +200,16 @@ def settle_via_auction(
     # 3. 分配
     alloc = compute_split(surplus, split_policy)
 
+    # 3.5 storage 層の原子的 claim（settle_intent と同じ多重ワーカー防衛線）。全ての
+    # 否認チェックの後・記帳の直前に置く：正当な否認（NO_WINNING_BID 等）で intent を
+    # 焼かず、read-check をすり抜けた並行リプレイだけを一意制約で DUPLICATE_INTENT にする。
+    if not engine._ledger.try_claim(f"settle:{mandate_id}:{intent_id}", at=at):
+        return _denied_auction_result(
+            engine, mandate_id=mandate_id, intent_id=intent_id, amount=user_limit,
+            purpose=purpose, payee_account_id=accounts.payee_account_id,
+            reason="DUPLICATE_INTENT", at=at, remaining_before=remaining_before,
+        )
+
     # 4. 1 つの balanced tx を組む
     epoch_index = engine._epoch_index(mandate, at)
     if not model_b:

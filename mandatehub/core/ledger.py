@@ -169,7 +169,7 @@ class Ledger:
     def storage(self) -> LedgerStorage:
         return self._storage
 
-    def try_claim(self, key: str) -> bool:
+    def try_claim(self, key: str, *, at) -> bool:
         """storage 層の原子的リプレイ claim に委譲する。
 
         storage が try_claim を実装していれば（SQLite/Postgres）その結果を返す。未実装の
@@ -177,7 +177,7 @@ class Ledger:
         read-check が担う）。マルチワーカーでは storage 層の一意制約が最終防衛線になる。
         """
         claim = getattr(self._storage, "try_claim", None)
-        return claim(key) if callable(claim) else True
+        return claim(key, at=at) if callable(claim) else True
 
     # ---------- 口座管理 ----------
 

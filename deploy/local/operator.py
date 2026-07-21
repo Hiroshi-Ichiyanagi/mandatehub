@@ -129,6 +129,10 @@ class Operator:
             self.merchant_account_id = cfg["merchant_account_id"]
             log.info("rehydrated mandate %s (budget %s cents, rate/min %s) from %s",
                      mandate.mandate_id, cfg["budget_cap_cents"], cfg.get("rate_per_min"), cfg_path)
+            if rate_per_min is not None and rate_per_min != cfg.get("rate_per_min"):
+                log.warning("MANDATEHUB_RATE_PER_MIN=%s ignored — mandate.json has %s "
+                            "(edit mandate.json + restart to change the limit)",
+                            rate_per_min, cfg.get("rate_per_min"))
         else:
             boot = _now()
             plat = self.ledger.open_account(OwnerType.PLATFORM, USDC, "platform")
@@ -184,6 +188,11 @@ class Operator:
             return 402, {"x402Version": 1, "error": "malformed X-PAYMENT",
                          "accepts": [req.to_wire()]}, {}
         auth = payload.payload.authorization
+        if not (isinstance(auth.value, str) and auth.value.isdigit() and int(auth.value) > 0):
+            self.denied_count += 1
+            return 402, {"x402Version": 1, "error": "malformed X-PAYMENT",
+                         "detail": "authorization.value must be a positive base-10 integer string",
+                         "accepts": [req.to_wire()]}, {}
         at = _now()
         ok, reason, _ = self.engine.preauthorize(
             mandate_id=self.mandate_id, intent_id=auth.nonce,
@@ -209,12 +218,21 @@ class Operator:
             log.warning("DENY facilitator settle: %s", s.error_reason)
             return 402, {"x402Version": 1, "error": "settlement failed",
                          "errorReason": s.error_reason,
-                         "accepts": [self.requirements.to_wire()]}, {}
+                         "accepts": [req.to_wire()]}, {}
         r = self.engine.settle_intent(
             mandate_id=self.mandate_id, intent_id=auth.nonce,
             payee_account_id=self.merchant_account_id,
             amount=Money(int(auth.value), USDC), purpose="API_CALL", at=at)
-        assert r.decision == "SETTLED"  # preauthorize passed; same inputs
+        if r.decision != "SETTLED":
+            # On-chain settlement already happened but the ledger refused to book it
+            # (e.g. a concurrent claim/budget race on a shared store). Surface loudly for
+            # manual reconciliation — never pretend success, never drop the tx hash.
+            log.critical("LEDGER/CHAIN DIVERGENCE: on-chain tx %s settled but ledger denied "
+                         "%s (%s) — manual reconciliation required", s.transaction,
+                         auth.nonce[:18], r.reason)
+            return 500, {"x402Version": 1, "error": "settled on-chain but not booked",
+                         "reason": r.reason,
+                         "settlement": {"transaction": s.transaction, "network": s.network}}, {}
         proof, _ = ProofOfMandateGenerator(self.engine).generate(self.mandate_id, snapshot_at=at)
         self.settled_count += 1
         log.info("SETTLED %s on-chain tx=%s remaining=%s", auth.nonce[:18], s.transaction,
@@ -462,8 +480,12 @@ def main() -> None:
                     "site": "https://mandatehub.ichiyanagi1111.workers.dev",
                     "bazaar": _bazaar_extension(public_url),
                 }
-            else:
+            elif self.path == "/quote":
                 status, body, extra = op.handle_payment(self.headers.get("X-PAYMENT"))
+            else:
+                status, body, extra = 404, {"error": "not found",
+                                            "endpoints": ["/", "/healthz", "/metrics",
+                                                          "/quote", "/quote-v2"]}, {}
             data = json.dumps(body).encode()
             self.send_response(status)
             for k, v in extra.items():
