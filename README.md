@@ -238,6 +238,7 @@ product and **not** novel cryptography — it is a clean assembly of standard pr
 - [Architecture](docs/ARCHITECTURE.md) · [Intent mandates](docs/INTENT_MANDATES.md) · [Best execution & recapture](docs/EXECUTION_RECAPTURE.md) · [x402 compatibility & roadmap](docs/X402.md) · [`mandate` model spec](specs/mandate.md) · [`best-exec` scheme spec](specs/best-exec.md)
 - [Roadmap](ROADMAP.md) — the public-release + protocol tracks, and the hard gates before mainnet
 - [Operations](docs/OPERATIONS.md) — the operating discipline (charter, money-path invariants, staged path to a running facilitator)
+- [Operating at scale](docs/OPERATING_AT_SCALE.md) — pricing, revenue tracking, adoption, when to scale out · [Multi-worker (H2)](docs/MULTIWORKER.md) · [Threat model (H1 prep)](docs/THREAT_MODEL.md)
 - [Releasing](docs/RELEASING.md) — how a version is cut + published to PyPI (trusted publishing; owner setup + per-release checklist)
 - [Contributing](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Security](SECURITY.md)
 
