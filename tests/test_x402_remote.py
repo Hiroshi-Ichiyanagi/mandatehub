@@ -244,3 +244,77 @@ class TestEvmExtra:
 
         with pytest.raises(MissingExtraError):
             EthAccountSigner("0x" + "11" * 32)
+
+
+class TestHttpErrorBodyParsing:
+    """CDP は無効な支払いを HTTP 400 + 正規の verify/settle JSON で返す（実測）。"""
+
+    def _http_error(self, code, body: dict | bytes):
+        import io
+        import urllib.error
+        raw = body if isinstance(body, bytes) else json.dumps(body).encode()
+        return urllib.error.HTTPError("https://x", code, "Bad Request", {}, io.BytesIO(raw))
+
+    def test_verify_4xx_with_valid_envelope_is_parsed(self):
+        op = StubOpener().set("verify", self._http_error(
+            400, {"isValid": False, "invalidReason": "invalid_exact_evm_payload_signature",
+                  "payer": "0x857b"}))
+        v = RemoteFacilitatorAdapter("https://x402.org/facilitator", opener=op).verify(_payload(), _reqs())
+        assert not v.is_valid and v.invalid_reason == "invalid_exact_evm_payload_signature"
+
+    def test_settle_4xx_with_valid_envelope_is_parsed(self):
+        op = StubOpener().set("settle", self._http_error(
+            400, {"success": False, "errorReason": "insufficient_funds", "payer": "0x857b",
+                  "transaction": "", "network": "base-sepolia"}))
+        s = RemoteFacilitatorAdapter("https://x402.org/facilitator", opener=op).settle(_payload(), _reqs())
+        assert not s.success and s.error_reason == "insufficient_funds"
+
+    def test_4xx_with_non_envelope_body_still_raises(self):
+        op = StubOpener().set("verify", self._http_error(400, {"errorType": "invalid_request"}))
+        with pytest.raises(FacilitatorError, match="HTTP 400"):
+            RemoteFacilitatorAdapter("https://x402.org/facilitator", opener=op).verify(_payload(), _reqs())
+
+    def test_4xx_with_malformed_body_still_raises(self):
+        op = StubOpener().set("verify", self._http_error(500, b"<html>oops</html>"))
+        with pytest.raises(FacilitatorError, match="HTTP 500"):
+            RemoteFacilitatorAdapter("https://x402.org/facilitator", opener=op).verify(_payload(), _reqs())
+
+
+class TestCdpHeaderHook:
+    def test_missing_sdk_raises_helpful_error(self, monkeypatch):
+        import sys
+        monkeypatch.setitem(sys.modules, "cdp", None)
+        monkeypatch.setitem(sys.modules, "cdp.auth", None)
+        from mandatehub.signers import MissingCdpExtraError, cdp_header_hook
+        with pytest.raises(MissingCdpExtraError, match=r"mandatehub\[cdp\]"):
+            cdp_header_hook("id", "secret")
+
+    def test_hook_binds_jwt_to_endpoint_path(self, monkeypatch):
+        import sys
+        import types
+        calls = []
+
+        class FakeJwtOptions:
+            def __init__(self, **kw):
+                self.kw = kw
+
+        def fake_generate_jwt(options):
+            calls.append(options.kw)
+            return "FAKEJWT"
+
+        fake_auth = types.SimpleNamespace(JwtOptions=FakeJwtOptions, generate_jwt=fake_generate_jwt)
+        fake_cdp = types.ModuleType("cdp"); fake_cdp.auth = fake_auth
+        monkeypatch.setitem(sys.modules, "cdp", fake_cdp)
+        monkeypatch.setitem(sys.modules, "cdp.auth", fake_auth)
+
+        from mandatehub.signers import cdp_header_hook
+        hook = cdp_header_hook("kid", "ksec")
+        hdrs = hook("verify", {})
+        assert hdrs == {"Authorization": "Bearer FAKEJWT"}
+        assert calls[0]["request_method"] == "POST"
+        assert calls[0]["request_host"] == "api.cdp.coinbase.com"
+        assert calls[0]["request_path"] == "/platform/v2/x402/verify"
+        hook("settle", {})
+        assert calls[1]["request_path"] == "/platform/v2/x402/settle"
+        # 鍵はヘッダに一切載らない
+        assert "ksec" not in json.dumps(hdrs)

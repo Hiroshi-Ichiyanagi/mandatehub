@@ -110,18 +110,32 @@ mandate-gate mitigations that wrap the adapter (server-derived requirements, ato
 nonce check-and-lock, deliver-only-after-`success:true`, fail-closed on `429`) are described in
 [X402.md § Still gated before mainnet](X402.md#still-gated-before-mainnet).
 
-## Coinbase CDP facilitator (auth headers)
+## Coinbase CDP facilitator ✅ (confirmed live 2026-07-21)
 
-A CDP facilitator needs auth headers. Supply them without hardcoding, via the adapter's
-`header_hook`:
+The official CDP facilitator — the same family that serves **mainnet** — is fully integrated
+and was confirmed live end-to-end: `/verify` → `isValid=true` and `/settle` → an on-chain
+Base Sepolia transfer, both through the packaged helper:
 
 ```python
-adapter = RemoteFacilitatorAdapter(url, network="base-sepolia",
-                                   header_hook=lambda: {"Authorization": f"Bearer {token()}"})
+from mandatehub.signers import CDP_FACILITATOR_URL, cdp_header_hook_from_file
+adapter = RemoteFacilitatorAdapter(CDP_FACILITATOR_URL, network="base-sepolia",
+                                   header_hook=cdp_header_hook_from_file())  # ~/.mandatehub-cdp.json
 ```
 
-The CDP header spec is still to confirm against the live service — treat the first CDP run as
-the confirmation. The `x402.org` facilitator needs no auth for `/verify`.
+Requires `pip install 'mandatehub[cdp]'` (the official `cdp-sdk` builds the per-request
+Ed25519 JWT bound to `POST {host}{path}`). Confirmed CDP specifics, learned live:
+
+- v1 `paymentRequirements` **must include `description` and `mimeType`** (CDP validates
+  strictly; x402.org does not require them).
+- An invalid payment returns **HTTP 400 with the regular verify/settle JSON body** (x402.org
+  returns 200 + `isValid=false`); `RemoteFacilitatorAdapter` handles both shapes.
+- **Self-send is rejected** (`self_send_not_allowed`): `payTo` must differ from the payer.
+- The key file `~/.mandatehub-cdp.json` is `{"keyId": ..., "keySecret": ...}` (chmod 600);
+  the secret never appears in headers, logs, or errors.
+
+The `x402.org` facilitator needs no auth. For **mainnet** the same code path applies with
+`network="base"`, `BASE_MAINNET_USDC`, and `extra=BASE_MAINNET_USDC_DOMAIN` (the domain name
+is `"USD Coin"`, not `"USDC"` — constants on-chain-verified) — gated on H1–H3.
 
 ## Env reference
 
