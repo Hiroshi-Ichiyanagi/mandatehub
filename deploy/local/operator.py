@@ -172,16 +172,17 @@ class Operator:
             "audit_root": self.audit.latest_hash(),
         }
 
-    def handle_payment(self, x_payment: str | None) -> tuple[int, dict, dict[str, str]]:
+    def handle_payment(self, x_payment: str | None, requirements=None) -> tuple[int, dict, dict[str, str]]:
+        req = requirements or self.requirements
         if not x_payment:
             return 402, {"x402Version": 1, "error": "payment required",
-                         "accepts": [self.requirements.to_wire()]}, {}
+                         "accepts": [req.to_wire()]}, {}
         try:
             payload = decode_x_payment(x_payment)
         except Exception:
             self.denied_count += 1
             return 402, {"x402Version": 1, "error": "malformed X-PAYMENT",
-                         "accepts": [self.requirements.to_wire()]}, {}
+                         "accepts": [req.to_wire()]}, {}
         auth = payload.payload.authorization
         at = _now()
         ok, reason, _ = self.engine.preauthorize(
@@ -194,15 +195,15 @@ class Operator:
             code = 429 if reason in ("WINDOW_VELOCITY_EXCEEDED", "EPOCH_VELOCITY_EXCEEDED") else 402
             return code, {"x402Version": 1, "error": "rejected by mandate",
                           "mandateReason": reason,
-                          "accepts": [self.requirements.to_wire()]}, {}
-        v = self.adapter.verify(payload, self.requirements)
+                          "accepts": [req.to_wire()]}, {}
+        v = self.adapter.verify(payload, req)
         if not v.is_valid:
             self.denied_count += 1
             log.info("DENY facilitator verify: %s", v.invalid_reason)
             return 402, {"x402Version": 1, "error": "payment invalid",
                          "invalidReason": v.invalid_reason,
-                         "accepts": [self.requirements.to_wire()]}, {}
-        s = self.adapter.settle(payload, self.requirements)
+                         "accepts": [req.to_wire()]}, {}
+        s = self.adapter.settle(payload, req)
         if not s.success:
             self.denied_count += 1
             log.warning("DENY facilitator settle: %s", s.error_reason)
@@ -412,6 +413,8 @@ def main() -> None:
                                                              header_hook=header_hook),
                   requirements=requirements, budget_cents=budget,
                   rate_per_min=rate_per_min, db_url=db_url)
+    import dataclasses as _dc
+    requirements_v2 = _dc.replace(requirements, resource=f"{public_url}/quote-v2")
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):  # noqa: N802
@@ -420,7 +423,7 @@ def main() -> None:
             elif self.path == "/quote-v2":
                 xp = self.headers.get("X-PAYMENT")
                 if xp:  # a payment arrived -> settle via CDP (same money-path as /quote)
-                    status, body, extra = op.handle_payment(xp)
+                    status, body, extra = op.handle_payment(xp, requirements_v2)
                 else:
                     import base64 as _b64
                     body = _v2_challenge(op.requirements, public_url)
