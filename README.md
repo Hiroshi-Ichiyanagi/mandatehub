@@ -5,6 +5,8 @@
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python: 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](pyproject.toml)
 
+**Site:** <https://mandatehub.ichiyanagi1111.workers.dev> · **PyPI:** `pip install mandatehub`
+
 A small, self-contained **verification core** for **provable autonomous
 machine-to-machine payment**. It does not execute payments on chain — it makes an
 autonomous agent's spending **provably bounded, best-executed, and honestly settled**, as
@@ -230,6 +232,7 @@ product and **not** novel cryptography — it is a clean assembly of standard pr
 
 ## Project
 
+- [Site](https://mandatehub.ichiyanagi1111.workers.dev) — the landing page (Cloudflare, auto-deployed from [`site/`](site/) on push to `main`)
 - [Architecture](docs/ARCHITECTURE.md) · [Intent mandates](docs/INTENT_MANDATES.md) · [Best execution & recapture](docs/EXECUTION_RECAPTURE.md) · [x402 compatibility & roadmap](docs/X402.md) · [`mandate` model spec](specs/mandate.md) · [`best-exec` scheme spec](specs/best-exec.md)
 - [Roadmap](ROADMAP.md) — the public-release + protocol tracks, and the hard gates before mainnet
 - [Operations](docs/OPERATIONS.md) — the operating discipline (charter, money-path invariants, staged path to a running facilitator)
