@@ -131,3 +131,36 @@ operator resumes with the exact budget/replay/lifecycle from snapshot time.
 `verify_chain()` (`Event hash mismatch`); a pure JSON-representation change (whitespace) does
 not — the chain commits to *content*, not bytes.
 
+## VPS deployment (current production — migrated 2026-07-21)
+
+The service now runs on the same VPS as the x402 gateway (`root@x402-gw`, Ubuntu, alongside
+the dockerized x402 stack), so availability no longer depends on the Mac:
+
+| piece | where |
+| ----- | ----- |
+| code | `/opt/mandatehub` (git clone, `.venv` with `[cdp]`) |
+| state | `/root/.mandatehub-operator/` (`ledger.db`, `audit.db`, `mandate.json`) |
+| secrets | `/root/.mandatehub-cdp.json` (600); the operator holds no agent key |
+| services | `systemd`: `mandatehub-operator.service`, `mandatehub-tunnel.service` (both `Restart=always`, enabled) |
+| tunnel | the SAME named tunnel `mandatehub` (`4e511a31…`) — credentials + `config-mandatehub.yml` moved; **no DNS change was needed** |
+| ops | `/etc/cron.d/mandatehub`: hourly `backup.py`, 5-min `monitor.py` (logs in the data dir) |
+
+Manage:
+```bash
+ssh root@x402-gw systemctl status mandatehub-operator mandatehub-tunnel
+ssh root@x402-gw journalctl -u mandatehub-operator -n 50 --no-pager
+ssh root@x402-gw "cd /opt/mandatehub && .venv/bin/python deploy/local/verify_state.py"
+# deploy an update: ssh root@x402-gw "cd /opt/mandatehub && git pull && systemctl restart mandatehub-operator"
+```
+
+**Migration procedure used (repeatable):** prepare (clone + venv + cloudflared binary +
+systemd units + staged state) → stop the old host's services → final `backup.py` snapshot →
+scp `ledger.db`/`audit.db`/`mandate.json` → start systemd units → verify public `/healthz`
+(same `audit_root` + `remaining_cents` = state continuity) → one real paid settle as the
+acceptance test. Downtime was ~30 seconds; budget/replay/history carried over exactly
+(re-derived from the copied storage — the same property the restart tests prove).
+
+The old Mac launchd jobs are unloaded with `-w` (disabled permanently); the Mac's data dir
+remains as an archive. Note: `monitor.py`'s launchd check reports `launchd=?` on Linux —
+cosmetic; systemd's `Restart=always` covers process supervision there.
+
