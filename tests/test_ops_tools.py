@@ -125,3 +125,44 @@ def test_stats_reports_revenue(tmp_path):
     assert m["revenue_cents"] == 10000
     assert m["unique_payees"] == 1
     assert list(m["per_day"].values())[0]["count"] == 1
+
+
+def test_dashboard_html_renders_and_json_negotiation(tmp_path, monkeypatch):
+    """Server-rendered HTML for browsers; JSON for API clients; both from live metrics."""
+    import importlib.util
+    data = tmp_path / "data"; data.mkdir()
+    _make_operator_state(data)
+    spec = importlib.util.spec_from_file_location("operator", DEPLOY / "operator.py")
+    mod = importlib.util.module_from_spec(spec)
+    monkeypatch.syspath_prepend(str(DEPLOY))
+    spec.loader.exec_module(mod)
+
+    # Build an Operator over the prepared data dir (rehydrates; no network in ctor).
+    class _NoAdapter:  # never called by the dashboard path
+        pass
+    from mandatehub.x402 import X402PaymentRequirements, BASE_SEPOLIA_USDC
+    reqs = X402PaymentRequirements(
+        scheme="exact", network="base-sepolia", max_amount_required="10000",
+        asset=BASE_SEPOLIA_USDC, pay_to="0xEDd58c7C43Cd63059fBeC3E43527c45f8efb42B4",
+        resource="http://x/quote", max_timeout_seconds=60,
+        description="d", mime_type="application/json", extra={"name": "USDC", "version": "2"})
+    op = mod.Operator(data, adapter=_NoAdapter(), requirements=reqs, budget_cents=1000000)
+    html = mod._dashboard_html(op, "https://mandatehub.example")
+    assert html.startswith("<!doctype html>")
+    assert "USDC revenue" in html and "settlements" in html
+    assert "0.010000" in html                 # revenue from the one settlement
+    assert "mandatehub.example/quote" in html
+    # well-formed
+    from html.parser import HTMLParser
+    class V(HTMLParser):
+        void = {"meta", "link", "img", "br", "hr", "input", "area", "base", "col",
+                "embed", "source", "track", "wbr"}
+        def __init__(self): super().__init__(); self.st = []
+        def handle_starttag(self, t, a):
+            if t not in self.void: self.st.append(t)
+        def handle_endtag(self, t):
+            if t in self.void: return
+            if self.st and self.st[-1] == t: self.st.pop()
+            elif t in self.st:
+                while self.st and self.st.pop() != t: pass
+    p = V(); p.feed(html); assert not p.st, p.st

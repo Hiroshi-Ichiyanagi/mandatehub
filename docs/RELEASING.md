@@ -52,7 +52,7 @@ For `mandatehub[evm]` there is nothing extra to do: the `evm` extra is declared 
    python -m build                       # sdist + wheel → dist/
    twine check dist/*                     # metadata + long-description render
    pip install "dist/"*.whl"[test]"
-   python -m pytest -q                    # 240 passed
+   python -m pytest -q                    # 241 passed
    python -c "import mandatehub; print(mandatehub.__version__)"
    ```
 

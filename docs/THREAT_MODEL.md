@@ -82,5 +82,5 @@ Each row: the claim, the enforcing code, and the test that would fail if it brok
 ## 6. Reproduction environment
 
 Everything is reproducible with `pip install -e ".[test]" && python -m pytest -q`
-(240 tests, stdlib-only runtime) plus the runnable examples; the live path is
+(241 tests, stdlib-only runtime) plus the runnable examples; the live path is
 re-runnable via [`docs/TESTNET.md`](TESTNET.md) with faucet funds only.
