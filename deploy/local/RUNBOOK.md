@@ -111,6 +111,12 @@ python deploy/local/verify_state.py                 # STATE CONSISTENT / INVALID
 tail -f ~/.mandatehub-operator/{monitor,backup}.log
 ```
 
+**Rate limiting (native):** set `MANDATEHUB_RATE_PER_MIN=N` (persisted in `mandate.json`) to
+cap settlements to N per rolling 60s via the mandate's own velocity policy — re-derived from
+the ledger, so it **survives restarts** (not an in-process counter). Over-rate calls get
+HTTP **429** with `mandateReason: WINDOW_VELOCITY_EXCEEDED`, denied before any facilitator
+call. The live operator runs at 30/min.
+
 **Revenue & usage:** the operator serves `GET /metrics` (settlements, revenue, unique
 payers, per-day breakdown, derived from the ledger); `deploy/local/stats.py` prints the same
 report offline from a data dir or a backup (`--json` for machine output). The monitor line

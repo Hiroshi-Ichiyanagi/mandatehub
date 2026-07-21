@@ -166,3 +166,50 @@ def test_dashboard_html_renders_and_json_negotiation(tmp_path, monkeypatch):
             elif t in self.st:
                 while self.st and self.st.pop() != t: pass
     p = V(); p.feed(html); assert not p.st, p.st
+
+
+def test_rate_limit_enforced_and_survives_restart(tmp_path, monkeypatch):
+    """MANDATEHUB_RATE_PER_MIN → rolling-window velocity cap, persisted across restart."""
+    import importlib.util
+    from datetime import datetime, timedelta, timezone
+    monkeypatch.syspath_prepend(str(DEPLOY))
+    spec = importlib.util.spec_from_file_location("operator", DEPLOY / "operator.py")
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+
+    from mandatehub import Currency, Money
+    from mandatehub.x402 import X402PaymentRequirements, BASE_SEPOLIA_USDC
+    USDC = Currency.USDC
+    reqs = X402PaymentRequirements(
+        scheme="exact", network="base-sepolia", max_amount_required="10000",
+        asset=BASE_SEPOLIA_USDC, pay_to="0xEDd58c7C43Cd63059fBeC3E43527c45f8efb42B4",
+        resource="http://x/quote", max_timeout_seconds=60, description="d",
+        mime_type="application/json", extra={"name": "USDC", "version": "2"})
+
+    data = tmp_path / "data"; data.mkdir()
+    op = mod.Operator(data, adapter=object(), requirements=reqs,
+                      budget_cents=1000000, rate_per_min=2)
+    now = datetime.now(timezone.utc)
+    pay = op.merchant_account_id
+    # two settlements in the window are fine
+    for i in range(2):
+        r = op.engine.settle_intent(mandate_id=op.mandate_id, intent_id=f"i{i}",
+                                    payee_account_id=pay, amount=Money(10000, USDC),
+                                    purpose="API_CALL", at=now + timedelta(seconds=i))
+        assert r.decision == "SETTLED"
+    # the third within 60s is rate-limited
+    ok, reason, _ = op.engine.preauthorize(mandate_id=op.mandate_id, intent_id="i2",
+        payee_account_id=pay, amount=Money(10000, USDC), purpose="API_CALL",
+        at=now + timedelta(seconds=3))
+    assert (ok, reason) == (False, "WINDOW_VELOCITY_EXCEEDED")
+
+    # RESTART: a fresh Operator over the same dir must re-apply the rate limit from mandate.json
+    op2 = mod.Operator(data, adapter=object(), requirements=reqs, budget_cents=1000000)
+    ok, reason, _ = op2.engine.preauthorize(mandate_id=op2.mandate_id, intent_id="i9",
+        payee_account_id=pay, amount=Money(10000, USDC), purpose="API_CALL",
+        at=now + timedelta(seconds=4))
+    assert (ok, reason) == (False, "WINDOW_VELOCITY_EXCEEDED")
+    # but after the window passes, it recovers
+    ok, reason, _ = op2.engine.preauthorize(mandate_id=op2.mandate_id, intent_id="i9",
+        payee_account_id=pay, amount=Money(10000, USDC), purpose="API_CALL",
+        at=now + timedelta(seconds=120))
+    assert ok, reason

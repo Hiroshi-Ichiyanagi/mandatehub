@@ -25,6 +25,7 @@ Env:
   MANDATEHUB_AMOUNT           price per call, minor units (default 10000 = 0.01 USDC)
   MANDATEHUB_BUDGET           mandate budget cap, minor units (default 1000000 = 1 USDC)
   MANDATEHUB_NETWORK          default base-sepolia
+  MANDATEHUB_RATE_PER_MIN     optional native rate limit (max settlements / 60s)
 
 Concurrency note (OPERATIONS.md "multi-worker rule"): this process is single-threaded on
 purpose — the SQLite storage layer is the final line of defense, and in-process
@@ -50,6 +51,7 @@ from mandatehub import (
     Money,
     OwnerType,
     ProofOfMandateGenerator,
+    SpendPolicy,
     SQLiteLedgerStorage,
     TransactionBuilder,
 )
@@ -80,7 +82,7 @@ def _now() -> datetime:
 
 class Operator:
     def __init__(self, data_dir: Path, *, adapter, requirements: X402PaymentRequirements,
-                 budget_cents: int) -> None:
+                 budget_cents: int, rate_per_min: int | None = None) -> None:
         self.adapter = adapter
         self.requirements = requirements
         data_dir.mkdir(parents=True, exist_ok=True)
@@ -89,6 +91,14 @@ class Operator:
         self.engine = IntentSettlementEngine(self.ledger, audit_log=self.audit)
         self.settled_count = 0
         self.denied_count = 0
+
+        def _policy(cfg: dict) -> "SpendPolicy | None":
+            # Native rate limiting via a rolling-window settlement cap (survives restarts —
+            # it's re-derived from the ledger, not an in-process counter). Persisted so a
+            # rehydrated mandate keeps the exact same limit.
+            n = cfg.get("rate_per_min")
+            return SpendPolicy(rolling_window_seconds=60,
+                               rolling_window_settlement_cap=int(n)) if n else None
 
         cfg_path = data_dir / "mandate.json"
         if cfg_path.exists():
@@ -101,11 +111,12 @@ class Operator:
                 valid_from=datetime.fromisoformat(cfg["valid_from"]),
                 valid_until=datetime.fromisoformat(cfg["valid_until"]),
                 created_at=datetime.fromisoformat(cfg["created_at"]),
+                spend_policy=_policy(cfg),
             )
             self.engine.rehydrate_mandate(mandate)
             self.merchant_account_id = cfg["merchant_account_id"]
-            log.info("rehydrated mandate %s (budget %s cents) from %s",
-                     mandate.mandate_id, cfg["budget_cap_cents"], cfg_path)
+            log.info("rehydrated mandate %s (budget %s cents, rate/min %s) from %s",
+                     mandate.mandate_id, cfg["budget_cap_cents"], cfg.get("rate_per_min"), cfg_path)
         else:
             boot = _now()
             plat = self.ledger.open_account(OwnerType.PLATFORM, USDC, "platform")
@@ -122,13 +133,14 @@ class Operator:
                 valid_from=(boot - timedelta(minutes=1)).isoformat(),
                 valid_until=(boot + timedelta(days=365)).isoformat(),
                 created_at=boot.isoformat(), merchant_account_id=merchant.account_id,
+                rate_per_min=rate_per_min,
             )
             self.engine.create_mandate(
                 mandate_id=cfg["mandate_id"], principal_id=cfg["principal_id"],
                 escrow_account_id=escrow.account_id, budget_cap=Money(budget_cents, USDC),
                 allowed_purposes=frozenset(["API_CALL"]),
                 valid_from=boot - timedelta(minutes=1), valid_until=boot + timedelta(days=365),
-                created_at=boot,
+                created_at=boot, spend_policy=_policy(cfg),
             )
             self.merchant_account_id = merchant.account_id
             cfg_path.write_text(json.dumps(cfg, indent=2))
@@ -167,9 +179,10 @@ class Operator:
         if not ok:
             self.denied_count += 1
             log.info("DENY %s (mandate gate; facilitator not called)", reason)
-            return 402, {"x402Version": 1, "error": "rejected by mandate",
-                         "mandateReason": reason,
-                         "accepts": [self.requirements.to_wire()]}, {}
+            code = 429 if reason in ("WINDOW_VELOCITY_EXCEEDED", "EPOCH_VELOCITY_EXCEEDED") else 402
+            return code, {"x402Version": 1, "error": "rejected by mandate",
+                          "mandateReason": reason,
+                          "accepts": [self.requirements.to_wire()]}, {}
         v = self.adapter.verify(payload, self.requirements)
         if not v.is_valid:
             self.denied_count += 1
@@ -277,6 +290,7 @@ def main() -> None:
     price = os.environ.get("MANDATEHUB_AMOUNT", "10000")
     budget = int(os.environ.get("MANDATEHUB_BUDGET", "1000000"))
     network = os.environ.get("MANDATEHUB_NETWORK", "base-sepolia")
+    rate_per_min = int(os.environ["MANDATEHUB_RATE_PER_MIN"]) if os.environ.get("MANDATEHUB_RATE_PER_MIN") else None
 
     # Network-aware defaults. On mainnet the EIP-712 domain name is "USD Coin"
     # (on-chain-verified) — reusing the Sepolia extra would invalidate every signature.
@@ -303,7 +317,8 @@ def main() -> None:
                                                 facilitator_url=url)
     op = Operator(data_dir, adapter=RemoteFacilitatorAdapter(url, network=network,
                                                              header_hook=header_hook),
-                  requirements=requirements, budget_cents=budget)
+                  requirements=requirements, budget_cents=budget,
+                  rate_per_min=rate_per_min)
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):  # noqa: N802
