@@ -51,6 +51,11 @@ def _is_localhost(host: str | None) -> bool:
     return host in ("127.0.0.1", "localhost", "::1")
 
 
+# 既定 UA。urllib 既定の "Python-urllib/x.y" は公共 facilitator 前段の WAF
+# （Cloudflare bot 対策）に 403 で弾かれる（x402.org /verify で実測、error 1010）。
+_USER_AGENT = "mandatehub-x402/1 (+https://github.com/Hiroshi-Ichiyanagi/mandatehub)"
+
+
 class RemoteFacilitatorAdapter:
     """x402 v1 ファシリテーター・クライアント。"""
 
@@ -91,7 +96,7 @@ class RemoteFacilitatorAdapter:
             "paymentRequirements": requirements.to_wire(),
         }
         data = json.dumps(body, separators=(",", ":")).encode("utf-8")
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": "application/json", "User-Agent": _USER_AGENT}
         if self._header_hook is not None:
             headers.update(self._header_hook(endpoint, body))
         req = urllib.request.Request(f"{self._url}/{endpoint}", data=data, headers=headers, method="POST")

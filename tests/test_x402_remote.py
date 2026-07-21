@@ -151,6 +151,20 @@ class TestVerifyWiring:
         assert endpoint == "verify" and body["x402Version"] == 1
         assert set(body.keys()) == {"x402Version", "paymentPayload", "paymentRequirements"}
 
+    def test_sends_real_user_agent_overridable_by_hook(self):
+        # 既定の Python-urllib UA は公共 facilitator の WAF に 403 で弾かれる（x402.org 実測）。
+        op = StubOpener().set("verify", {"isValid": True})
+        RemoteFacilitatorAdapter("https://x402.org/facilitator", opener=op).verify(_payload(), _reqs())
+        hdrs = {k.lower(): v for k, v in op.calls[0][2].items()}
+        assert hdrs.get("user-agent", "").startswith("mandatehub-x402/")
+        op2 = StubOpener().set("verify", {"isValid": True})
+        RemoteFacilitatorAdapter(
+            "https://x402.org/facilitator", opener=op2,
+            header_hook=lambda e, b: {"User-Agent": "custom/9"},
+        ).verify(_payload(), _reqs())
+        hdrs2 = {k.lower(): v for k, v in op2.calls[0][2].items()}
+        assert hdrs2.get("user-agent") == "custom/9"
+
 
 class TestSettleWiring:
     def _adapter(self, resp):

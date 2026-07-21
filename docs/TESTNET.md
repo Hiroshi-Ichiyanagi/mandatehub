@@ -9,6 +9,13 @@ Per [OPERATIONS.md](OPERATIONS.md), anything that submits a transaction is an ow
 you supply the facilitator, the key, and the testnet funds; the code and this runbook are the
 prepared, verified half.
 
+> **Wire format confirmed live (2026-07-21).** A no-key wire check (a `StubSigner`-signed
+> `exact`/EVM payload) against the real `https://x402.org/facilitator` `/verify` returned
+> `isValid=false, invalidReason=invalid_exact_evm_signature` with our payer address echoed
+> back — i.e. the real facilitator **parsed the full v1 payload and got all the way to
+> signature verification** (the only step a stub signer cannot pass). The remaining live
+> unknowns are only: a real key's signature validity, funding, and `/settle`.
+
 ## The three owner inputs (the gate)
 
 | input | what | how |
@@ -113,7 +120,11 @@ the confirmation. The `x402.org` facilitator needs no auth for `/verify`.
 - **`facilitator URL must be https`** — the adapter refuses non-https (localhost excepted for
   local tests); use an `https://` facilitator.
 - **`insufficient_funds`** — expected until the agent wallet holds Base Sepolia USDC; fund it.
-- **`FacilitatorError: HTTP 401/403`** — the facilitator needs auth headers (CDP); pass a
+- **`FacilitatorError: HTTP 403`** — usually the facilitator's WAF (Cloudflare bot fight,
+  `error code: 1010`) rejecting a default `Python-urllib` User-Agent. The client now sends a
+  `mandatehub-x402/1` UA by default, so this should not recur; a `header_hook` can override
+  the UA if a facilitator requires something specific. (Observed live against `x402.org`.)
+- **`FacilitatorError: HTTP 401`** — the facilitator needs auth headers (CDP); pass a
   `header_hook`.
 - **`only x402 v1 is supported`** — the payload/response declared a non-v1 `x402Version`; this
   build speaks v1 only.
