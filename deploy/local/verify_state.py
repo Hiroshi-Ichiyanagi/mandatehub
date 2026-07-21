@@ -34,7 +34,8 @@ from mandatehub import (
 
 
 def _snapshot(src: Path, dst: Path) -> None:
-    s = sqlite3.connect(str(src))
+    # read-only URI: a verify tool must never create or modify production state
+    s = sqlite3.connect(f"file:{src}?mode=ro", uri=True)
     try:
         d = sqlite3.connect(str(dst))
         try:
@@ -51,6 +52,12 @@ def main() -> int:
     cfg_path = data_dir / "mandate.json"
     if not cfg_path.exists():
         print(f"no mandate.json in {data_dir}", file=sys.stderr)
+        return 1
+
+    if not (data_dir / "ledger.db").exists():
+        print("ledger.db not found — this data dir belongs to a Postgres-backed operator "
+              "(MANDATEHUB_DB_URL). Verify the ledger against Postgres directly; this tool "
+              "covers file-backed deployments.", file=sys.stderr)
         return 1
 
     # Work on WAL-consistent copies so a live operator is never disturbed.

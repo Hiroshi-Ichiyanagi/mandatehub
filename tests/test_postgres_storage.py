@@ -92,9 +92,9 @@ def test_engine_flow_on_postgres():
 
 def test_try_claim_is_atomic():
     s = _fresh_storage()
-    assert s.try_claim("k") is True
-    assert s.try_claim("k") is False
-    assert s.try_claim("k2") is True
+    assert s.try_claim("k", at=T) is True
+    assert s.try_claim("k", at=T) is False
+    assert s.try_claim("k2", at=T) is True
 
 
 # --- the multi-worker headline ---------------------------------------------------------

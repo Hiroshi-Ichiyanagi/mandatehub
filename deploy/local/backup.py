@@ -43,16 +43,17 @@ def main() -> int:
     backup_root = Path(os.environ.get("MANDATEHUB_BACKUP_DIR", str(data_dir / "backups")))
     keep = int(os.environ.get("MANDATEHUB_BACKUP_KEEP", "48"))
 
-    for f in ("ledger.db", "audit.db"):
-        if not (data_dir / f).exists():
-            print(f"nothing to back up: {data_dir / f} missing", file=sys.stderr)
-            return 1
+    if not (data_dir / "audit.db").exists():
+        print(f"nothing to back up: {data_dir / 'audit.db'} missing", file=sys.stderr)
+        return 1
+    has_ledger = (data_dir / "ledger.db").exists()  # absent on Postgres-backed operators
 
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     snap = backup_root / stamp
     snap.mkdir(parents=True, exist_ok=True)
 
-    _online_backup(data_dir / "ledger.db", snap / "ledger.db")
+    if has_ledger:
+        _online_backup(data_dir / "ledger.db", snap / "ledger.db")
     _online_backup(data_dir / "audit.db", snap / "audit.db")
     if (data_dir / "mandate.json").exists():
         shutil.copy2(data_dir / "mandate.json", snap / "mandate.json")
@@ -70,8 +71,9 @@ def main() -> int:
         shutil.rmtree(old, ignore_errors=True)
 
     size = sum(f.stat().st_size for f in snap.iterdir())
-    print(f"backup OK: {snap}  ({size} bytes, audit chain verified; "
-          f"{len(snaps[-keep:]) if keep > 0 else len(snaps)} kept)")
+    note = "" if has_ledger else "; ledger external (Postgres) — back it up via pg_dump"
+    print(f"backup OK: {snap}  ({size} bytes, audit chain verified"
+          f"{note}; {len(snaps[-keep:]) if keep > 0 else len(snaps)} kept)")
     return 0
 
 

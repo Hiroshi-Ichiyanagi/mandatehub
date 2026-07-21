@@ -33,6 +33,9 @@ BASE_MAINNET_USDC_DOMAIN = {"name": "USD Coin", "version": "2"}
 _CHAIN_IDS: dict[str, int] = {
     "base-sepolia": 84532,
     "base": 8453,
+    # x402 v2 は CAIP-2 スラッグを使う（同一チェーンの別表記）
+    "eip155:84532": 84532,
+    "eip155:8453": 8453,
 }
 
 

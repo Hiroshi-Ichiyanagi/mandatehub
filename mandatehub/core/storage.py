@@ -47,7 +47,7 @@ class LedgerStorage(Protocol):
     ) -> Iterator[Entry]: ...
     def iter_all_transactions(self) -> Iterator[Transaction]: ...
 
-    def try_claim(self, key: str) -> bool:
+    def try_claim(self, key: str, *, at: datetime) -> bool:
         """委任枠決済のリプレイ一意性を storage 層で原子的に主張する。
 
         初めて見る key なら True（＝この呼び出しが唯一の勝者）、既に存在すれば False。
@@ -341,11 +341,11 @@ class SQLiteLedgerStorage:
 
     # ---------- リプレイ一意性（原子的 claim） ----------
 
-    def try_claim(self, key: str) -> bool:
+    def try_claim(self, key: str, *, at: datetime) -> bool:
         try:
             self._conn.execute(
                 "INSERT INTO settlement_claims (claim_key, claimed_at) VALUES (?, ?)",
-                (key, datetime.now(timezone.utc).isoformat()),
+                (key, at.isoformat()),
             )
             return True
         except sqlite3.IntegrityError:

@@ -80,16 +80,29 @@ def main() -> int:
             parts.append("agent_usdc=?")
             problems.append(f"balance check failed: {e!r}")
 
-    # 3) launchd services (best-effort, local only)
+    # 3) service supervision (best-effort, platform-aware, local only)
+    import shutil
     try:
-        listing = subprocess.run(["launchctl", "list"], capture_output=True, text=True,
-                                 timeout=10).stdout
-        for svc in ("com.mandatehub.operator", "com.mandatehub.tunnel"):
-            if svc not in listing:
-                problems.append(f"{svc} not loaded")
-        parts.append("launchd=ok" if not any("not loaded" in p for p in problems) else "launchd=CHECK")
+        if shutil.which("systemctl"):
+            for svc in ("mandatehub-operator", "mandatehub-tunnel"):
+                state = subprocess.run(["systemctl", "is-active", svc], capture_output=True,
+                                       text=True, timeout=10).stdout.strip()
+                if state != "active":
+                    problems.append(f"{svc} {state or 'inactive'}")
+            parts.append("services=ok" if not any("mandatehub-" in p for p in problems)
+                         else "services=CHECK")
+        elif shutil.which("launchctl"):
+            listing = subprocess.run(["launchctl", "list"], capture_output=True, text=True,
+                                     timeout=10).stdout
+            for svc in ("com.mandatehub.operator", "com.mandatehub.tunnel"):
+                if svc not in listing:
+                    problems.append(f"{svc} not loaded")
+            parts.append("services=ok" if not any("not loaded" in p for p in problems)
+                         else "services=CHECK")
+        else:
+            parts.append("services=skipped")
     except Exception:
-        parts.append("launchd=?")
+        parts.append("services=?")
 
     status = "OK" if not problems else "PROBLEM"
     print(f"[{status}] " + " | ".join(parts) + ("" if not problems else "  << " + "; ".join(problems)))

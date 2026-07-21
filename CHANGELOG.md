@@ -65,6 +65,25 @@ APIs may change while the project is pre-1.0.
   non-2xx instead of raising); self-send is rejected.
 
 ### Fixed
+- **Claim coverage completed** — `settle_batch` and `settle_via_auction` now take the same
+  atomic storage-layer claim as `settle_intent` (batch: all intents claimed after
+  authorization; auction: claimed after every deny-check so legitimate denials never burn an
+  intent). `try_claim` now takes the explicit settlement time (`at=`) — the determinism guard
+  caught the original wall-clock read on the money path.
+- **x402 v2 client compat** — `X402PaymentRequirements.from_wire` accepts v2 `amount`
+  (fallback from v1 `maxAmountRequired`) and `chain_id_for` knows CAIP-2 slugs
+  (`eip155:8453/84532`), so `x402_pay.py` can quote/pay v2 endpoints (it previously crashed
+  on the live `/quote-v2` challenge).
+- **Ops tools on Postgres-backed operators** — `verify_state.py` opens sources read-only and
+  reports (instead of crashing after creating a stray empty `ledger.db` in the live data
+  dir); `backup.py` still snapshots `audit.db`+`mandate.json` when the ledger is external
+  (previously: zero backups in Postgres mode).
+- **Operator hardening** — malformed `authorization.value` now 402s instead of dropping the
+  connection; the settle-failure path returns the v2 resource in `accepts`; the post-settle
+  `assert` is now an explicit ledger/chain-divergence handler (500 + tx hash, loud log) so a
+  booking refusal after real money moved is surfaced, never masked; unknown paths (e.g.
+  `/favicon.ico`) return 404 instead of a 402 challenge; `monitor.py` checks systemd on Linux
+  (was launchd-only, silently OK on the VPS); rate-limit env/config mismatch now warns.
 - `RemoteFacilitatorAdapter` now sends a real `User-Agent` (`mandatehub-x402/1`) by default —
   the stdlib default `Python-urllib/x.y` UA is rejected with HTTP 403 (Cloudflare bot
   protection, error 1010) by public facilitators, observed live against `x402.org`'s

@@ -226,12 +226,12 @@ class PostgresLedgerStorage:
 
     # ---------- replay uniqueness (atomic claim) ----------
 
-    def try_claim(self, key: str) -> bool:
+    def try_claim(self, key: str, *, at: datetime) -> bool:
         with self._conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO settlement_claims (claim_key, claimed_at) VALUES (%s, %s) "
                 "ON CONFLICT (claim_key) DO NOTHING",
-                (key, datetime.now(timezone.utc).isoformat()))
+                (key, at.isoformat()))
             return cur.rowcount == 1  # 1 = we inserted (won the claim); 0 = already claimed
 
 

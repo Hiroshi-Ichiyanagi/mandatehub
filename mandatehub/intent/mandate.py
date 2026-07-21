@@ -702,7 +702,7 @@ class IntentSettlementEngine:
         # では no-op（True）だが、複数ワーカー共有ストア（Postgres）では一意制約により、
         # _authorize の read-check をすり抜けた並行リプレイをここで確実に弾く（DUPLICATE_INTENT）。
         # claim 後に記帳が落ちた場合、その intent_id は以後 deny される（fail-closed；金銭は動かない）。
-        if not self._ledger.try_claim(f"settle:{mandate_id}:{intent_id}"):
+        if not self._ledger.try_claim(f"settle:{mandate_id}:{intent_id}", at=at):
             evt = self._audit(
                 "intent_denied",
                 {
@@ -836,6 +836,34 @@ class IntentSettlementEngine:
                     epoch_index=epoch_index,
                 )
             )
+
+        # 全件認可通過 → 記帳の直前に storage 層で全 intent を原子的に claim する
+        # （settle_intent と同じ多重ワーカー防衛線）。途中の claim が失敗した場合は
+        # バッチ全体を否認する。既に取得済みの claim はロールバックせず残る＝その
+        # intent_id は以後 DUPLICATE_INTENT になる（fail-closed：二重決済より、稀な
+        # 競合時に id を焼く方を選ぶ。docs/MULTIWORKER.md 参照）。
+        for req in intents:
+            if not self._ledger.try_claim(f"settle:{mandate_id}:{req.intent_id}", at=at):
+                evt = self._audit(
+                    "intent_batch_denied",
+                    {
+                        KEY_MANDATE_ID: mandate_id,
+                        "offending_intent_id": req.intent_id,
+                        "reason": "DUPLICATE_INTENT",
+                        "at": at.isoformat(),
+                        "num_intents": len(intents),
+                    },
+                    at=at,
+                )
+                return BatchSettlementResult(
+                    mandate_id=mandate_id,
+                    decision="DENIED",
+                    reason=f"DUPLICATE_INTENT@{req.intent_id}",
+                    transaction_id=None,
+                    per_intent=(),
+                    audit_sequence=evt.sequence if evt else None,
+                    remaining_after_cents=self.remaining_cents(mandate_id, at),
+                )
 
         # 全件成立 → 1 tx を組み立てる（レグごとの escrow-debit + payee credit）
         entries: list[tuple[str, Money]] = []
