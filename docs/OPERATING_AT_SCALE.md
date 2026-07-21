@@ -40,10 +40,11 @@ it funded for whatever the operator itself needs to pay out (it is not the reven
   `python examples/x402_pay.py https://<host>/quote`. Point developers at
   [the site](https://mandatehub.ichiyanagi1111.workers.dev) and `pip install mandatehub`.
 - **x402 Bazaar (Coinbase CDP discovery).** Agents discover resources via
-  `GET /platform/v2/x402/discovery/resources`. Listing is **not** automatic from settlements and
-  is **not** a public API POST (that returns 404) — register the resource through the **CDP
-  portal** (owner action) so it appears with a service name, description, tags, and icon. Until
-  then the endpoint is fully usable by anyone with the URL; it's just not in the directory.
+  `GET /platform/v2/x402/discovery/resources`. Registration is the **`POST …/x402/validate`**
+  API (not a portal click, not automatic from settlements) — and the one gate is that the
+  endpoint must serve an **x402 v2** `402` with a `bazaar` extension. Full findings + the exact
+  shape: [`docs/BAZAAR.md`](BAZAAR.md). Until upgraded, the endpoint is fully usable by anyone
+  with the URL; it is just not yet in the directory.
 - **Self-describing endpoint.** `GET /` returns a JSON info object (service, price, how-to-pay,
   links) for machines and an HTML dashboard for humans — both good landing surfaces to share.
 
