@@ -47,6 +47,8 @@ evm = ["eth-account>=0.10"]
 # Coinbase CDP facilitator auth (JWT via the official SDK). Core stays stdlib-only;
 # only needed for mandatehub.signers.cdp_header_hook.
 cdp = ["cdp-sdk>=1.29"]
+# Multi-worker shared-store ledger (PostgresLedgerStorage). Core stays stdlib-only.
+postgres = ["psycopg[binary]>=3.1"]
 
 [project.urls]
 Homepage = "https://github.com/Hiroshi-Ichiyanagi/mandatehub"

@@ -47,6 +47,16 @@ class LedgerStorage(Protocol):
     ) -> Iterator[Entry]: ...
     def iter_all_transactions(self) -> Iterator[Transaction]: ...
 
+    def try_claim(self, key: str) -> bool:
+        """委任枠決済のリプレイ一意性を storage 層で原子的に主張する。
+
+        初めて見る key なら True（＝この呼び出しが唯一の勝者）、既に存在すれば False。
+        DB の一意制約で実装するため、複数ワーカー/プロセスでも二重決済が構造的に不可能
+        （read-then-check の競合窓を閉じる）。省略可（未実装なら Ledger 側が単一プロセス
+        向けに True を返す）。
+        """
+        ...
+
 
 # --------- SQLite実装 ---------
 
@@ -93,6 +103,11 @@ CREATE TABLE IF NOT EXISTS entries (
 
 CREATE INDEX IF NOT EXISTS idx_entries_account_id ON entries(account_id);
 CREATE INDEX IF NOT EXISTS idx_entries_transaction_id ON entries(transaction_id);
+
+CREATE TABLE IF NOT EXISTS settlement_claims (
+    claim_key  TEXT PRIMARY KEY,
+    claimed_at TEXT NOT NULL
+);
 """
 
 
@@ -323,6 +338,18 @@ class SQLiteLedgerStorage:
         ).fetchall()
         for row in rows:
             yield self.load_transaction(row[0])
+
+    # ---------- リプレイ一意性（原子的 claim） ----------
+
+    def try_claim(self, key: str) -> bool:
+        try:
+            self._conn.execute(
+                "INSERT INTO settlement_claims (claim_key, claimed_at) VALUES (?, ?)",
+                (key, datetime.now(timezone.utc).isoformat()),
+            )
+            return True
+        except sqlite3.IntegrityError:
+            return False
 
 
 # --------- ヘルパー関数 ---------

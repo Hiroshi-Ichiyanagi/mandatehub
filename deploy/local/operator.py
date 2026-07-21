@@ -26,6 +26,8 @@ Env:
   MANDATEHUB_BUDGET           mandate budget cap, minor units (default 1000000 = 1 USDC)
   MANDATEHUB_NETWORK          default base-sepolia
   MANDATEHUB_RATE_PER_MIN     optional native rate limit (max settlements / 60s)
+  MANDATEHUB_DB_URL           optional Postgres conninfo for a SHARED ledger
+                              (multi-worker; needs pip install 'mandatehub[postgres]')
 
 Concurrency note (OPERATIONS.md "multi-worker rule"): this process is single-threaded on
 purpose — the SQLite storage layer is the final line of defense, and in-process
@@ -82,11 +84,21 @@ def _now() -> datetime:
 
 class Operator:
     def __init__(self, data_dir: Path, *, adapter, requirements: X402PaymentRequirements,
-                 budget_cents: int, rate_per_min: int | None = None) -> None:
+                 budget_cents: int, rate_per_min: int | None = None,
+                 db_url: str | None = None) -> None:
         self.adapter = adapter
         self.requirements = requirements
         data_dir.mkdir(parents=True, exist_ok=True)
-        self.ledger = Ledger(SQLiteLedgerStorage(str(data_dir / "ledger.db")))
+        if db_url:
+            # Shared Postgres ledger → the atomic unique-PK claim makes concurrent replay
+            # impossible across workers (docs/MULTIWORKER.md). NOTE: the audit log is still
+            # local SQLite here — running >1 worker also needs a shared audit store; the
+            # money-path safety (no double-spend) comes from the shared ledger + claim.
+            from mandatehub.storage_postgres import PostgresLedgerStorage
+            self.ledger = Ledger(PostgresLedgerStorage(db_url))
+            log.info("ledger backend: Postgres (multi-worker capable)")
+        else:
+            self.ledger = Ledger(SQLiteLedgerStorage(str(data_dir / "ledger.db")))
         self.audit = AuditLog(str(data_dir / "audit.db"))
         self.engine = IntentSettlementEngine(self.ledger, audit_log=self.audit)
         self.settled_count = 0
@@ -291,6 +303,7 @@ def main() -> None:
     budget = int(os.environ.get("MANDATEHUB_BUDGET", "1000000"))
     network = os.environ.get("MANDATEHUB_NETWORK", "base-sepolia")
     rate_per_min = int(os.environ["MANDATEHUB_RATE_PER_MIN"]) if os.environ.get("MANDATEHUB_RATE_PER_MIN") else None
+    db_url = os.environ.get("MANDATEHUB_DB_URL")  # e.g. "dbname=mandatehub host=/tmp" → shared Postgres ledger
 
     # Network-aware defaults. On mainnet the EIP-712 domain name is "USD Coin"
     # (on-chain-verified) — reusing the Sepolia extra would invalidate every signature.
@@ -318,7 +331,7 @@ def main() -> None:
     op = Operator(data_dir, adapter=RemoteFacilitatorAdapter(url, network=network,
                                                              header_hook=header_hook),
                   requirements=requirements, budget_cents=budget,
-                  rate_per_min=rate_per_min)
+                  rate_per_min=rate_per_min, db_url=db_url)
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):  # noqa: N802

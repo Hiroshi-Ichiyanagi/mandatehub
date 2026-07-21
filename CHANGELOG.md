@@ -9,6 +9,14 @@ APIs may change while the project is pre-1.0.
 ## [Unreleased]
 
 ### Added
+- **Multi-worker durability (H2) — built.** `mandatehub.storage_postgres.PostgresLedgerStorage`
+  (`[postgres]` extra, psycopg) is a shared-store ledger mirroring the SQLite backend, plus an
+  atomic unique-PK settlement claim (`try_claim`, `INSERT … ON CONFLICT`) now wired into the
+  engine's settle path (SQLite gains it too — a `settlement_claims` table). A concurrent replay
+  is structurally un-postable across workers. `tests/test_postgres_storage.py` proves it against
+  a real Postgres: 8 concurrent processes settling the same intent through the engine yield
+  EXACTLY ONE settlement. The operator gains `MANDATEHUB_DB_URL` for a shared ledger. (A shared
+  audit store for a fully multi-worker operator remains.)
 - **Multi-worker durability (H2) — designed + validated.** `docs/MULTIWORKER.md` specifies
   the shared-store path: an atomic unique-PK claim on `(mandate_id, intent_id)` makes a
   concurrent replay structurally un-postable, plus per-mandate `FOR UPDATE` for cross-intent

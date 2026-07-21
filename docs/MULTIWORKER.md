@@ -5,9 +5,12 @@ the ledger, and in-process serialization is trusted *because there is exactly on
 This document specifies how to make it safe to run **multiple workers** (or scale out to a
 shared database), what the invariant is, and why the current code must not simply be run twice.
 
-Status: **design + empirically validated primitive** (`tests/test_multiworker_poc.py`). The
-Postgres backend itself is unbuilt — it is the concrete next step, deferred until a Postgres
-instance is available to test against. This is honest H2 progress, not a claim of completion.
+Status: **built and proven end-to-end.** `mandatehub.storage_postgres.PostgresLedgerStorage`
+(the `[postgres]` extra) is a shared-store ledger with the atomic unique-PK claim; the engine
+settle path uses it. `tests/test_postgres_storage.py` runs the full engine flow AND 8 real
+concurrent processes settling the same intent through the engine on one Postgres — exactly one
+settles. Remaining for a full multi-worker *operator*: a shared **audit** store (the money-path
+ledger safety is done; audit is still per-process).
 
 ## 1. The race (why you cannot just run two operators)
 

@@ -698,6 +698,34 @@ class IntentSettlementEngine:
                 audit_sequence=evt.sequence if evt else None,
             )
 
+        # 認可通過後、記帳の直前に storage 層で intent を原子的に claim する。単一プロセス
+        # では no-op（True）だが、複数ワーカー共有ストア（Postgres）では一意制約により、
+        # _authorize の read-check をすり抜けた並行リプレイをここで確実に弾く（DUPLICATE_INTENT）。
+        # claim 後に記帳が落ちた場合、その intent_id は以後 deny される（fail-closed；金銭は動かない）。
+        if not self._ledger.try_claim(f"settle:{mandate_id}:{intent_id}"):
+            evt = self._audit(
+                "intent_denied",
+                {
+                    KEY_MANDATE_ID: mandate_id,
+                    KEY_INTENT_ID: intent_id,
+                    "payee_account_id": payee_account_id,
+                    "amount_cents": amount.cents,
+                    "currency": amount.currency.code,
+                    "purpose": purpose,
+                    "reason": "DUPLICATE_INTENT",
+                    "at": at.isoformat(),
+                    "remaining_cents": remaining_before,
+                },
+                at=at,
+            )
+            return IntentSettlementResult(
+                intent_id=intent_id, mandate_id=mandate_id, decision="DENIED",
+                amount=amount, purpose=purpose, payee_account_id=payee_account_id,
+                reason="DUPLICATE_INTENT", decided_at=at,
+                remaining_after_cents=remaining_before, transaction_id=None,
+                audit_sequence=evt.sequence if evt else None,
+            )
+
         epoch_index = self._epoch_index(mandate, at)
         meta = self._settlement_metadata(
             mandate,
