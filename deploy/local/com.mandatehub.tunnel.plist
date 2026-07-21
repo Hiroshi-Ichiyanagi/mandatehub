@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Cloudflare Named Tunnel for the operator (mandatehub.<yourdomain> -> 127.0.0.1:8403).
+     Prereqs: `cloudflared tunnel create mandatehub`, a config file with an ingress rule,
+     and `cloudflared tunnel route dns <TUNNEL-UUID> mandatehub.<yourdomain>`
+     (⚠ route by tunnel UUID, not name — the name form can bind an existing CNAME to the
+     wrong tunnel on multi-tunnel accounts). Edit CHANGEME before installing. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.mandatehub.tunnel</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/cloudflared</string>
+    <string>tunnel</string><string>--config</string>
+    <string>/Users/CHANGEME/.cloudflared/config-mandatehub.yml</string>
+    <string>--no-autoupdate</string><string>run</string><string>mandatehub</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/Users/CHANGEME/.mandatehub-operator/tunnel.log</string>
+  <key>StandardErrorPath</key><string>/Users/CHANGEME/.mandatehub-operator/tunnel.log</string>
+</dict>
+</plist>

@@ -10,7 +10,7 @@ logs). Testnet by default; mainnet stays behind H1–H3 ([ROADMAP](../../ROADMAP
 # foreground (dev)
 export MANDATEHUB_FACILITATOR_URL=https://x402.org/facilitator
 export MANDATEHUB_PAY_TO=0xYourReceivingAddress
-python deploy/local/operator.py                 # listens on 127.0.0.1:8402
+python deploy/local/operator.py                 # listens on 127.0.0.1:8403
 
 # resident (launchd) — edit CHANGEME paths/values first
 cp deploy/local/com.mandatehub.operator.plist ~/Library/LaunchAgents/
@@ -21,7 +21,7 @@ launchctl unload ~/Library/LaunchAgents/com.mandatehub.operator.plist   # stop
 ## Health & state
 
 ```bash
-curl -s localhost:8402/healthz | python3 -m json.tool
+curl -s localhost:8403/healthz | python3 -m json.tool
 # ok / mandate / remaining_cents / settled_this_process / denied_this_process / audit_root
 ```
 
@@ -62,6 +62,34 @@ Unit coverage: `tests/test_rehydration.py`.
 
 ## Public exposure (optional)
 
-Same as the x402-Gateway: put a Cloudflare Named Tunnel in front of `127.0.0.1:8402`
+Same as the x402-Gateway: put a Cloudflare Named Tunnel in front of `127.0.0.1:8403`
 (never expose the port directly). The tunnel config is owner-side and holds no secrets of
 this service.
+
+## Public deployment (the x402-Gateway pattern) — LIVE
+
+The operator runs resident behind a Cloudflare Named Tunnel, exactly like the sibling
+`x402.obolpay.xyz` gateway (separate tunnel + launchd job; no port exposed directly).
+
+**Live:** <https://mandatehub.obolpay.xyz> — `/` (info), `/healthz`, `/quote` (402 → pay).
+On mainnet the operator settles real USDC via the Coinbase CDP facilitator.
+
+Setup used:
+1. `operator.py` under launchd (`com.mandatehub.operator.plist`, port 8403), env pointed at
+   the CDP facilitator + `MANDATEHUB_NETWORK=base` + `MANDATEHUB_CDP_KEY_FILE`.
+2. A **dedicated** tunnel: `cloudflared tunnel create mandatehub`, a `config-mandatehub.yml`
+   with `ingress: mandatehub.<domain> -> http://127.0.0.1:8403`, and
+   `com.mandatehub.tunnel.plist` under launchd.
+3. DNS: `cloudflared tunnel route dns <TUNNEL-UUID> mandatehub.<domain>` — **route by the
+   tunnel UUID, not its name.** On a multi-tunnel account the name form silently bound the
+   CNAME to the wrong (existing) tunnel; the UUID form is unambiguous.
+
+**Bot protection note:** the Cloudflare zone challenges the *literal* default
+`Python-urllib/x.y` User-Agent with a 403 (identical to the x402 zone). Every real client is
+fine — browsers, x402 SDKs, and mandatehub's own `RemoteFacilitatorAdapter` all send a
+non-default UA. A bare-urllib script must set any `User-Agent` header.
+
+**Verified end-to-end (2026-07-21):** an internet request to `/quote` → x402 `exact` payment →
+**real USDC settled on Base mainnet** (tx `0xad7ff6ac…`) → `ProofOfMandate` in the response;
+a replay of the same `X-PAYMENT` was denied `DUPLICATE_INTENT` over the public URL.
+
