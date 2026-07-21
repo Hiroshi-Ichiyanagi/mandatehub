@@ -84,7 +84,21 @@ MANDATEHUB_LIVE_SETTLE=1 python examples/x402_live_smoke.py
 `success=true` with a `transaction` hash is the on-chain testnet settlement — verify it on the
 Base Sepolia explorer (<https://sepolia.basescan.org>).
 
-## Step 3 — the full `402 → pay → settle → proof` loop
+## Step 3 — the full `402 → pay → settle → proof` loop ✅ (ran live 2026-07-21)
+
+**Completed live**: `examples/x402_live_loop.py` ran the whole loop against the real
+`x402.org` facilitator on Base Sepolia — a localhost resource server speaking the real v1
+`X-PAYMENT` wire, with the mandate gate (budget cap 0.025 USDC) in front of settlement:
+
+| call | result |
+| ---- | ------ |
+| fresh payment | `200` + on-chain settle ([tx `0x3586…4c25`](https://sepolia.basescan.org/tx/0x35869b2e27a158b452f4dd10a84c8e0250bdf6cb1d27a425987b67305fe94c25)) + `ProofOfMandate` |
+| **replayed** `X-PAYMENT` | `402 DUPLICATE_INTENT` — mandate blocked it **before** the facilitator (no network call, no chain action) |
+| fresh payment | `200` + on-chain settle ([tx `0xb6c9…d2f8`](https://sepolia.basescan.org/tx/0xb6c9ee460fde90f9bcda0bdba3cd4181ff1861e89d43138eef4bbcb1e69ed2f8)) |
+| over-budget payment | `402 BUDGET_EXCEEDED` — denied for free, fail-closed |
+
+Both payer/merchant balance deltas were confirmed via RPC. Run it yourself with the same
+env as the smoke test: `python examples/x402_live_loop.py`.
 
 Compose the mandate gate around the real settlement: a resource server returns `402` with
 `PaymentRequirements`; the agent builds the `exact` payload (Step 1); the facilitator settles
