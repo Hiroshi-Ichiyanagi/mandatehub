@@ -93,3 +93,29 @@ non-default UA. A bare-urllib script must set any `User-Agent` header.
 **real USDC settled on Base mainnet** (tx `0xad7ff6ac…`) → `ProofOfMandate` in the response;
 a replay of the same `X-PAYMENT` was denied `DUPLICATE_INTENT` over the public URL.
 
+## Backups, monitoring & state verification (ops jobs)
+
+Three read-only tools + launchd jobs keep the live service safe and observed
+(observation never blocks the money path):
+
+| tool | job (cadence) | what |
+| ---- | ------------- | ---- |
+| `backup.py` | `com.mandatehub.backup` (hourly) | WAL-safe online snapshot of `ledger.db`+`audit.db`+`mandate.json`; **rejects any snapshot whose audit chain doesn't verify**; keeps the newest `MANDATEHUB_BACKUP_KEEP` (default 48). |
+| `monitor.py` | `com.mandatehub.monitor` (5 min) | public `/healthz` up, agent on-chain USDC balance (warn below `MANDATEHUB_MIN_USDC`), launchd services loaded. One status line; non-zero exit on any problem. |
+| `verify_state.py` | on demand / incident | re-derive budget + collateralization from storage and **verify the audit hash chain** — trusting only the files. |
+
+```bash
+python deploy/local/backup.py                       # -> backups/<UTC-stamp>/ (verified)
+MANDATEHUB_AGENT_ADDR=0x… python deploy/local/monitor.py
+python deploy/local/verify_state.py                 # STATE CONSISTENT / INVALID
+tail -f ~/.mandatehub-operator/{monitor,backup}.log
+```
+
+**Restore drill:** stop the operator, copy a snapshot's three files into the data dir, run
+`verify_state.py` to confirm, restart. Because all state is re-derived from those files, the
+operator resumes with the exact budget/replay/lifecycle from snapshot time.
+
+**Tamper detection is real** (tested): a semantic change to any audit payload breaks
+`verify_chain()` (`Event hash mismatch`); a pure JSON-representation change (whitespace) does
+not — the chain commits to *content*, not bytes.
+
