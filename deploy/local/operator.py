@@ -20,7 +20,7 @@ are re-derived from storage — never from process memory.
 Env:
   MANDATEHUB_FACILITATOR_URL  (required)  e.g. https://x402.org/facilitator
   MANDATEHUB_PAY_TO           (required)  merchant receiving address
-  MANDATEHUB_PORT             default 8402
+  MANDATEHUB_PORT             default 8403
   MANDATEHUB_DATA_DIR         default ~/.mandatehub-operator
   MANDATEHUB_AMOUNT           price per call, minor units (default 10000 = 0.01 USDC)
   MANDATEHUB_BUDGET           mandate budget cap, minor units (default 1000000 = 1 USDC)
@@ -54,6 +54,8 @@ from mandatehub import (
     TransactionBuilder,
 )
 from mandatehub.x402 import (
+    BASE_MAINNET_USDC,
+    BASE_MAINNET_USDC_DOMAIN,
     BASE_SEPOLIA_USDC,
     RemoteFacilitatorAdapter,
     X402PaymentRequirements,
@@ -209,27 +211,58 @@ def main() -> None:
                         format="%(asctime)s %(levelname)s %(name)s %(message)s")
     url = _require("MANDATEHUB_FACILITATOR_URL")
     pay_to = _require("MANDATEHUB_PAY_TO")
-    port = int(os.environ.get("MANDATEHUB_PORT", "8402"))
+    port = int(os.environ.get("MANDATEHUB_PORT", "8403"))
     data_dir = Path(os.environ.get("MANDATEHUB_DATA_DIR",
                                    str(Path.home() / ".mandatehub-operator")))
     price = os.environ.get("MANDATEHUB_AMOUNT", "10000")
     budget = int(os.environ.get("MANDATEHUB_BUDGET", "1000000"))
     network = os.environ.get("MANDATEHUB_NETWORK", "base-sepolia")
 
+    # Network-aware defaults. On mainnet the EIP-712 domain name is "USD Coin"
+    # (on-chain-verified) — reusing the Sepolia extra would invalidate every signature.
+    if network == "base":
+        default_asset, extra = BASE_MAINNET_USDC, dict(BASE_MAINNET_USDC_DOMAIN)
+    else:
+        default_asset, extra = BASE_SEPOLIA_USDC, {"name": "USDC", "version": "2"}
+    public_url = os.environ.get("MANDATEHUB_PUBLIC_URL", f"http://127.0.0.1:{port}")
     requirements = X402PaymentRequirements(
         scheme="exact", network=network, max_amount_required=price,
-        asset=os.environ.get("MANDATEHUB_ASSET", BASE_SEPOLIA_USDC), pay_to=pay_to,
-        resource=f"http://127.0.0.1:{port}/quote", max_timeout_seconds=60,
+        asset=os.environ.get("MANDATEHUB_ASSET", default_asset), pay_to=pay_to,
+        resource=f"{public_url}/quote", max_timeout_seconds=60,
         description="one API call (mandatehub operator)",
-        extra={"name": "USDC", "version": "2"},
+        mime_type="application/json",   # CDP validates v1 requirements strictly
+        extra=extra,
     )
-    op = Operator(data_dir, adapter=RemoteFacilitatorAdapter(url, network=network),
+    # Facilitator auth: if a CDP key file is configured (or the URL is CDP), attach the
+    # per-request JWT hook. The key secret never leaves the hook.
+    header_hook = None
+    cdp_key_file = os.environ.get("MANDATEHUB_CDP_KEY_FILE")
+    if cdp_key_file or "api.cdp.coinbase.com" in url:
+        from mandatehub.signers import cdp_header_hook_from_file
+        header_hook = cdp_header_hook_from_file(cdp_key_file or "~/.mandatehub-cdp.json",
+                                                facilitator_url=url)
+    op = Operator(data_dir, adapter=RemoteFacilitatorAdapter(url, network=network,
+                                                             header_hook=header_hook),
                   requirements=requirements, budget_cents=budget)
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):  # noqa: N802
             if self.path == "/healthz":
                 status, body, extra = 200, op.health(), {}
+            elif self.path == "/" or self.path == "":
+                status, extra = 200, {}
+                body = {
+                    "service": "mandatehub operator",
+                    "what": "x402 resource server with a mandate gate: budget-capped, "
+                            "replay-proof, proof-carrying autonomous payments",
+                    "network": op.requirements.network,
+                    "price_minor_units": op.requirements.max_amount_required,
+                    "pay": f"GET {public_url}/quote (returns 402 + accepts; pay via the "
+                           "x402 exact scheme, e.g. pip install mandatehub)",
+                    "health": f"{public_url}/healthz",
+                    "library": "https://github.com/Hiroshi-Ichiyanagi/mandatehub",
+                    "site": "https://mandatehub.ichiyanagi1111.workers.dev",
+                }
             else:
                 status, body, extra = op.handle_payment(self.headers.get("X-PAYMENT"))
             data = json.dumps(body).encode()
