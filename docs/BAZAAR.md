@@ -58,7 +58,34 @@ A listed v2 resource's `402` body carries:
 `validate` requires `has_bazaar_extension`, `bazaar.info.input.{type,method}`, `bazaar.schema`
 (all required) and `bazaar.info.output.example` (advisory).
 
-## The remaining step (scoped)
+## x402 v2 — DONE (validated by CDP 2026-07-21)
+
+The operator now serves an **x402 v2** discovery challenge at `/quote-v2`
+(`https://mandatehub.obolpay.xyz/quote-v2`), and CDP's `validate` accepts it:
+
+```
+VALID: True   simulation: {"outcome": "accepted"}   (all required preflight checks pass)
+```
+
+What v2 required (learned via the validate loop):
+1. The PaymentRequired payload delivered in a **`PAYMENT-REQUIRED` response header**
+   (base64 JSON) — "the indexer reads only the header for v2".
+2. **CAIP-2** network (`eip155:8453`) and `amount` (not `maxAmountRequired`).
+3. A top-level **`resource: {url}`** object.
+4. `extensions.bazaar` with `info.input`/`info.output.example` and a **`schema` that describes
+   the `info` object** (properties `input`/`output`) — not the response body.
+
+`deploy/local/validate_bazaar.py <url>` re-runs this check (the listing acceptance test).
+`/quote-v2` also forwards real payments to the CDP facilitator (same money-path as `/quote`).
+
+## Remaining (indexing)
+
+`validate` is a *checker*, not an *indexer* (it returns `index: null`). Listing in the public
+Bazaar follows separately — CDP indexes eligible resources (a crawl, and/or resources with
+settlement activity through its facilitator). The endpoint is now **eligible** (validated);
+re-check with `discovery/merchant?payTo=<ours>` until it appears.
+
+## (superseded) original scoped step
 
 Flipping discoverability on is an **x402 v1 → v2 upgrade of the operator's challenge** (and,
 for agents to pay it, v2 acceptance): change the `402` body to the v2 shape above + the

@@ -231,40 +231,81 @@ class Operator:
         }, {"X-PAYMENT-RESPONSE": encode_x_payment_response(s)}
 
 
-def _bazaar_extension(public_url: str) -> dict:
-    """Ready-to-serve x402 Bazaar (CDP discovery) extension for the /quote endpoint.
-
-    This is the metadata CDP's `validate` requires for listing (info.input/output + schema).
-    Wired into the info response today; it drops straight into a v2 402 `extensions.bazaar`
-    when the challenge is upgraded to x402 v2 (see docs/BAZAAR.md).
-    """
+def _v2_challenge(requirements, public_url: str) -> dict:
+    """An x402 v2 `402` body for Bazaar discovery (CDP validate). CAIP-2 network, `amount`,
+    and the `extensions.bazaar` block. Iterated against POST …/x402/validate until green."""
+    r = requirements
+    caip2 = {"base": "eip155:8453", "base-sepolia": "eip155:84532"}.get(r.network, r.network)
     return {
-        "routeTemplate": "/quote",
+        "x402Version": 2,
+        "error": "payment required",
+        "resource": {"url": f"{public_url}/quote-v2"},
+        "accepts": [{
+            "scheme": r.scheme,
+            "network": caip2,
+            "amount": r.max_amount_required,
+            "asset": r.asset,
+            "payTo": r.pay_to,
+            "resource": f"{public_url}/quote-v2",
+            "description": "mandatehub: a mandate-gated price quote. Pays real USDC on Base; "
+                           "every 200 carries an on-chain settlement tx + a ProofOfMandate.",
+            "mimeType": "application/json",
+            "maxTimeoutSeconds": r.max_timeout_seconds,
+            "extra": dict(r.extra or {}),
+        }],
+        "extensions": {"bazaar": _bazaar_extension(public_url)},
+    }
+
+
+def _bazaar_extension(public_url: str) -> dict:
+    """x402 Bazaar (CDP discovery) extension for /quote-v2. `schema` is a JSON Schema over the
+    `info` object (input + output) — matching the shape of a listed resource."""
+    output_example = {
+        "data": {"quote": "BTC/USD 68,000", "ts": "2026-07-21T00:00:00+00:00"},
+        "settlement": {"transaction": "0x...", "network": "base"},
+        "proofOfMandate": {"remaining_cents": 9990000, "total_settled_cents": 10000,
+                           "is_within_budget": True, "is_collateralized": True,
+                           "audit_log_root_hash": "..."},
+    }
+    return {
+        "routeTemplate": "/quote-v2",
         "info": {
             "input": {"type": "http", "method": "GET"},
-            "output": {
-                "type": "json",
-                "example": {
-                    "data": {"quote": "BTC/USD 68,000", "ts": "2026-07-21T00:00:00+00:00"},
-                    "settlement": {"transaction": "0x…", "network": "base"},
-                    "proofOfMandate": {"remaining_cents": 9990000, "is_within_budget": True,
-                                       "is_collateralized": True, "audit_log_root_hash": "…"},
-                },
-            },
+            "output": {"type": "json", "example": output_example},
         },
         "schema": {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "type": "object",
-            "required": ["data", "settlement", "proofOfMandate"],
+            "additionalProperties": False,
+            "required": ["input", "output"],
             "properties": {
-                "data": {"type": "object"},
-                "settlement": {"type": "object",
-                               "properties": {"transaction": {"type": "string"},
-                                              "network": {"type": "string"}}},
-                "proofOfMandate": {"type": "object",
-                                   "properties": {"remaining_cents": {"type": "integer"},
-                                                  "is_within_budget": {"type": "boolean"},
-                                                  "is_collateralized": {"type": "boolean"}}},
+                "input": {
+                    "type": "object", "additionalProperties": False,
+                    "required": ["type", "method"],
+                    "properties": {"type": {"type": "string"},
+                                   "method": {"type": "string", "enum": ["GET"]}},
+                },
+                "output": {
+                    "type": "object", "additionalProperties": False,
+                    "required": ["type", "example"],
+                    "properties": {
+                        "type": {"type": "string"},
+                        "example": {
+                            "type": "object",
+                            "required": ["data", "settlement", "proofOfMandate"],
+                            "properties": {
+                                "data": {"type": "object"},
+                                "settlement": {"type": "object", "properties": {
+                                    "transaction": {"type": "string"},
+                                    "network": {"type": "string"}}},
+                                "proofOfMandate": {"type": "object", "properties": {
+                                    "remaining_cents": {"type": "integer"},
+                                    "is_within_budget": {"type": "boolean"},
+                                    "is_collateralized": {"type": "boolean"}}},
+                            },
+                        },
+                    },
+                },
             },
         },
     }
@@ -376,6 +417,16 @@ def main() -> None:
         def do_GET(self):  # noqa: N802
             if self.path == "/healthz":
                 status, body, extra = 200, op.health(), {}
+            elif self.path == "/quote-v2":
+                xp = self.headers.get("X-PAYMENT")
+                if xp:  # a payment arrived -> settle via CDP (same money-path as /quote)
+                    status, body, extra = op.handle_payment(xp)
+                else:
+                    import base64 as _b64
+                    body = _v2_challenge(op.requirements, public_url)
+                    # x402 v2: the indexer reads the PaymentRequired payload ONLY from this header.
+                    hdr = _b64.b64encode(json.dumps(body).encode()).decode()
+                    status, extra = 402, {"PAYMENT-REQUIRED": hdr}
             elif self.path == "/metrics":
                 from _metrics import compute_metrics
                 status, extra = 200, {}
