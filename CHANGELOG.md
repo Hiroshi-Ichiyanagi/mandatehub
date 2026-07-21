@@ -8,6 +8,22 @@ APIs may change while the project is pre-1.0.
 
 ## [Unreleased]
 
+### Added
+- **`IntentSettlementEngine.rehydrate_mandate(mandate)`** (H2) — re-attach a mandate to a
+  restarted engine over file-backed storage without double history (no new audit event, no
+  collateral re-check), with fail-closed guards (double-attach, wrong ledger, child-before-
+  parent). Budget, replay, monotonic time, and lifecycle all survive a process restart —
+  verified by `tests/test_rehydration.py` and a live SIGKILL-and-replay test on Base Sepolia.
+- **Base MAINNET USDC constants, verified on-chain** — `BASE_MAINNET_CHAIN_ID` (8453),
+  `BASE_MAINNET_USDC`, `BASE_MAINNET_USDC_DOMAIN` (`{"name": "USD Coin", "version": "2"}` —
+  note the domain name differs from Base Sepolia's `"USDC"`; reusing the Sepolia extra on
+  mainnet would invalidate every signature). `name()`/`version()`/`DOMAIN_SEPARATOR()` were
+  read via `eth_call` and the separator recomputed offline to a byte-exact match.
+- `deploy/local/` — the durable **operator** service (file-backed ledger/audit, mandate
+  rehydration on boot, `/healthz`, fail-closed on every path) + launchd template + runbook.
+- `docs/THREAT_MODEL.md` — H1 preparation: assets, adversaries, defended claims mapped to
+  code+tests, known gaps, and a priced audit scope.
+
 ### Fixed
 - `RemoteFacilitatorAdapter` now sends a real `User-Agent` (`mandatehub-x402/1`) by default —
   the stdlib default `Python-urllib/x.y` UA is rejected with HTTP 403 (Cloudflare bot

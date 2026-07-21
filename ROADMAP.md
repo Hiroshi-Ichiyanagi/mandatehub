@@ -26,7 +26,7 @@ discipline for both — and the staged path from this library to a running facil
   third-party re-verification. Offline accounting layer; the audited on-chain settler is out
   of core (§ hard gates).
 
-224 tests, 8 examples, determinism + import-discipline guards, zero third-party runtime deps
+229 tests, 8 examples, determinism + import-discipline guards, zero third-party runtime deps
 (EVM signing isolated behind the optional `[evm]` extra).
 
 ## Release track — take it public "the x402 way"
@@ -75,9 +75,14 @@ Publishing the open-source project is safe. **Moving real value is not, until:**
 
 - **H1 — Independent security review / audit** of the payment, settlement, and key-handling
   paths (the adversarial-review passes so far are internal, not a substitute for an audit).
+  Preparation is done: [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) maps every defended
+  claim to code+tests, lists the known gaps, and scopes the audit.
 - **H2 — Production hardening** — durable storage (Postgres via the `LedgerStorage` protocol),
   key management / KMS, auth, rate limiting, monitoring, incident runbooks, fail-closed on
-  settlement saturation.
+  settlement saturation. **Partially done:** single-process durability is built and verified —
+  file-backed SQLite + `rehydrate_mandate`, restart-safe budget/replay (unit + live SIGKILL
+  test), the [`deploy/local/`](deploy/local/) operator + [runbook](deploy/local/RUNBOOK.md).
+  Remaining: shared-store (Postgres/D1) constraints for multi-worker, KMS, auth/rate-limit.
 - **H3 — Legal / compliance review** — moving stablecoin value has regulatory implications;
   get counsel before mainnet. This is not legal advice.
 
