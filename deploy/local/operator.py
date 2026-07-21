@@ -231,6 +231,45 @@ class Operator:
         }, {"X-PAYMENT-RESPONSE": encode_x_payment_response(s)}
 
 
+def _bazaar_extension(public_url: str) -> dict:
+    """Ready-to-serve x402 Bazaar (CDP discovery) extension for the /quote endpoint.
+
+    This is the metadata CDP's `validate` requires for listing (info.input/output + schema).
+    Wired into the info response today; it drops straight into a v2 402 `extensions.bazaar`
+    when the challenge is upgraded to x402 v2 (see docs/BAZAAR.md).
+    """
+    return {
+        "routeTemplate": "/quote",
+        "info": {
+            "input": {"type": "http", "method": "GET"},
+            "output": {
+                "type": "json",
+                "example": {
+                    "data": {"quote": "BTC/USD 68,000", "ts": "2026-07-21T00:00:00+00:00"},
+                    "settlement": {"transaction": "0x…", "network": "base"},
+                    "proofOfMandate": {"remaining_cents": 9990000, "is_within_budget": True,
+                                       "is_collateralized": True, "audit_log_root_hash": "…"},
+                },
+            },
+        },
+        "schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "required": ["data", "settlement", "proofOfMandate"],
+            "properties": {
+                "data": {"type": "object"},
+                "settlement": {"type": "object",
+                               "properties": {"transaction": {"type": "string"},
+                                              "network": {"type": "string"}}},
+                "proofOfMandate": {"type": "object",
+                                   "properties": {"remaining_cents": {"type": "integer"},
+                                                  "is_within_budget": {"type": "boolean"},
+                                                  "is_collateralized": {"type": "boolean"}}},
+            },
+        },
+    }
+
+
 def _esc(x: object) -> str:
     import html
     return html.escape(str(x))
@@ -367,6 +406,7 @@ def main() -> None:
                     "metrics": f"{public_url}/metrics",
                     "library": "https://github.com/Hiroshi-Ichiyanagi/mandatehub",
                     "site": "https://mandatehub.ichiyanagi1111.workers.dev",
+                    "bazaar": _bazaar_extension(public_url),
                 }
             else:
                 status, body, extra = op.handle_payment(self.headers.get("X-PAYMENT"))
