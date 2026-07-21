@@ -104,7 +104,17 @@ class RemoteFacilitatorAdapter:
             with self._opener.open(req, timeout=self._timeout) as resp:
                 raw = resp.read()
         except urllib.error.HTTPError as e:
-            # ステータスのみ。ペイロード/署名は絶対に載せない（redaction）
+            # CDP は「支払いが無効」を HTTP 400 + 正規の verify/settle JSON で返す
+            # （x402.org は 200 + isValid=false）。ボディが正規の結果エンベロープなら
+            # それを結果として返す。それ以外の 4xx/5xx は従来どおり fail-closed。
+            # ステータス以外（ペイロード/署名）はエラーに絶対に載せない（redaction）。
+            err_body = e.read()
+            try:
+                parsed_err = json.loads(err_body)
+            except (ValueError, UnicodeDecodeError):
+                parsed_err = None
+            if isinstance(parsed_err, dict) and ("isValid" in parsed_err or "success" in parsed_err):
+                return parsed_err
             raise FacilitatorError(f"facilitator /{endpoint} returned HTTP {e.code}") from None
         except urllib.error.URLError as e:
             raise FacilitatorError(f"facilitator /{endpoint} network error: {e.reason!r}") from None

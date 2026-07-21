@@ -26,7 +26,7 @@ discipline for both — and the staged path from this library to a running facil
   third-party re-verification. Offline accounting layer; the audited on-chain settler is out
   of core (§ hard gates).
 
-229 tests, 8 examples, determinism + import-discipline guards, zero third-party runtime deps
+235 tests, 8 examples, determinism + import-discipline guards, zero third-party runtime deps
 (EVM signing isolated behind the optional `[evm]` extra).
 
 ## Release track — take it public "the x402 way"

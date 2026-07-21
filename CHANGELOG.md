@@ -24,6 +24,15 @@ APIs may change while the project is pre-1.0.
 - `docs/THREAT_MODEL.md` — H1 preparation: assets, adversaries, defended claims mapped to
   code+tests, known gaps, and a priced audit scope.
 
+- **Coinbase CDP facilitator integration** (`[cdp]` extra) —
+  `mandatehub.signers.cdp_header_hook` / `cdp_header_hook_from_file` build the per-request
+  Ed25519 JWT (via the official `cdp-sdk`) bound to each endpoint;
+  `CDP_FACILITATOR_URL` exported. Confirmed live end-to-end on Base Sepolia:
+  `/verify` → `isValid=true`, `/settle` → on-chain transfer. CDP specifics learned live and
+  handled: v1 requirements need `description`+`mimeType`; invalid payments come back as
+  HTTP 400 **with** a regular result body (the adapter now parses result envelopes on
+  non-2xx instead of raising); self-send is rejected.
+
 ### Fixed
 - `RemoteFacilitatorAdapter` now sends a real `User-Agent` (`mandatehub-x402/1`) by default —
   the stdlib default `Python-urllib/x.y` UA is rejected with HTTP 403 (Cloudflare bot
