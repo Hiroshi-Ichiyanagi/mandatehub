@@ -61,12 +61,13 @@ discipline for both — and the staged path from this library to a running facil
   [`specs/best-exec.md`](specs/best-exec.md). The audited on-chain `BestExecSettler` contract
   (atomic split, nonce binding, no rebate withholding) is **out of core and unbuilt** — gate
   H1. Design → implement → adversarial review: done.
-- **P-live — Testnet validation.** Run `examples/x402_live_smoke.py` against a real facilitator
-  on **Base Sepolia**, then a full `402 → pay → settle → proof` loop on testnet. An offline
-  `examples/x402_live_preflight.py` validates the client wiring (env, https guard, payload
-  build) before any real call, and [`docs/TESTNET.md`](docs/TESTNET.md) is the step-by-step
-  runbook. *(You: facilitator URL + agent key + testnet USDC; I: the preflight, runbook, and
-  client.)*
+- **P-live — Testnet validation. ✅ Done (2026-07-21).** The real x402 v1 flow ran end-to-end
+  against `https://x402.org/facilitator` on **Base Sepolia** with a real key: `/verify` →
+  `isValid=true`, then `/settle` → an on-chain USDC transfer (0.01 USDC,
+  [tx `0x4b6c…c901`](https://sepolia.basescan.org/tx/0x4b6c4bf9c68124867f7ddc8cd0bd305a6a88a20bafd1c3b6e58cabdb1deac901),
+  payer/recipient balance change confirmed via RPC; the payer held **zero ETH** — the
+  EIP-3009 gasless design held). `examples/x402_live_preflight.py` (offline wiring check) and
+  [`docs/TESTNET.md`](docs/TESTNET.md) are the reproducible runbook.
 
 ## Hard gates before mainnet / real money
 

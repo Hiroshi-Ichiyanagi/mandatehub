@@ -9,12 +9,19 @@ Per [OPERATIONS.md](OPERATIONS.md), anything that submits a transaction is an ow
 you supply the facilitator, the key, and the testnet funds; the code and this runbook are the
 prepared, verified half.
 
-> **Wire format confirmed live (2026-07-21).** A no-key wire check (a `StubSigner`-signed
-> `exact`/EVM payload) against the real `https://x402.org/facilitator` `/verify` returned
-> `isValid=false, invalidReason=invalid_exact_evm_signature` with our payer address echoed
-> back — i.e. the real facilitator **parsed the full v1 payload and got all the way to
-> signature verification** (the only step a stub signer cannot pass). The remaining live
-> unknowns are only: a real key's signature validity, funding, and `/settle`.
+> **P-live COMPLETED (2026-07-21).** The full flow ran against the real
+> `https://x402.org/facilitator` on Base Sepolia with a real key:
+>
+> 1. *Wire format* — a no-key `StubSigner` payload returned
+>    `invalid_exact_evm_signature` (v1 parsed end-to-end to signature verification).
+> 2. *`/verify`* — with a real key + funded wallet: **`isValid=true`**.
+> 3. *`/settle`* — **`success=true`**, on-chain USDC transfer
+>    ([tx `0x4b6c…c901`](https://sepolia.basescan.org/tx/0x4b6c4bf9c68124867f7ddc8cd0bd305a6a88a20bafd1c3b6e58cabdb1deac901),
+>    0.01 USDC payer→recipient, both balance changes confirmed via RPC). The payer wallet
+>    held **zero ETH** throughout — the facilitator paid gas, confirming the EIP-3009
+>    gasless design in practice.
+>
+> This runbook remains the reproducible path for re-running the validation.
 
 ## The three owner inputs (the gate)
 
