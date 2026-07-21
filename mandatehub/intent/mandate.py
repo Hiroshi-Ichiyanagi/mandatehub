@@ -303,6 +303,36 @@ class IntentSettlementEngine:
         except KeyError:
             raise MandateError(f"unknown mandate: {mandate_id}") from None
 
+    # ---------- 再起動復元（H2: 永続ストレージからの再構築） ----------
+
+    def rehydrate_mandate(self, mandate: Mandate) -> None:
+        """既に台帳・監査チェーンに歴史を持つ委任枠を、再起動したエンジンに再装着する。
+
+        `create_mandate` と違い、監査イベントを追記せず、担保の再検証も行わない
+        （どちらも初回作成時に済んでおり、再実行すると歴史が二重になる）。装着後の
+        予算・リプレイ・単調時刻・親子集計はすべて台帳／監査チェーンから再導出される
+        ので、プロセスを再起動しても認可判定は同一に保たれる。
+
+        fail-closed ガード:
+          - 同じ mandate_id が既に装着済みなら拒否（二重装着は設定ミス）。
+          - escrow 口座が台帳に存在しなければ拒否（別の台帳への誤装着を検出）。
+          - 親を持つ委任枠は、親が先に装着されていなければ拒否（集計が壊れる）。
+        """
+        if mandate.mandate_id in self._mandates:
+            raise MandateError(f"mandate already attached: {mandate.mandate_id}")
+        try:
+            self._ledger.get_account(mandate.escrow_account_id)
+        except Exception:
+            raise MandateError(
+                f"escrow account not found in this ledger: {mandate.escrow_account_id} "
+                "(rehydrating against the wrong ledger?)"
+            ) from None
+        if mandate.parent_mandate_id is not None and mandate.parent_mandate_id not in self._mandates:
+            raise MandateError(
+                f"parent mandate must be rehydrated first: {mandate.parent_mandate_id}"
+            )
+        self._mandates[mandate.mandate_id] = mandate
+
     # ---------- ライフサイクル ----------
 
     def mandate_state(self, mandate_id: str, at: datetime) -> MandateLifecycleView:

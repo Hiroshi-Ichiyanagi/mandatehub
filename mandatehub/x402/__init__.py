@@ -51,6 +51,9 @@ from mandatehub.x402.best_exec import (
 # --- Phase 2: real x402 v1 client (exact/EVM) ---
 from mandatehub.x402.eip712 import (
     BASE_SEPOLIA_CHAIN_ID,
+    BASE_MAINNET_CHAIN_ID,
+    BASE_MAINNET_USDC,
+    BASE_MAINNET_USDC_DOMAIN,
     BASE_SEPOLIA_USDC,
     USDC_DECIMALS,
     build_transfer_with_authorization,
@@ -114,6 +117,9 @@ __all__ = [
     "build_transfer_with_authorization",
     "chain_id_for",
     "BASE_SEPOLIA_CHAIN_ID",
+    "BASE_MAINNET_CHAIN_ID",
+    "BASE_MAINNET_USDC",
+    "BASE_MAINNET_USDC_DOMAIN",
     "BASE_SEPOLIA_USDC",
     "USDC_DECIMALS",
     # Phase 3: best-exec scheme (offline accounting layer)

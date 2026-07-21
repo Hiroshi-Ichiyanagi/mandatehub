@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- launchd template for the mandatehub operator (the x402-Gateway residency pattern).
+     Install:  cp com.mandatehub.operator.plist ~/Library/LaunchAgents/
+               (edit WorkingDirectory / MANDATEHUB_* values first)
+               launchctl load ~/Library/LaunchAgents/com.mandatehub.operator.plist
+     Logs:     ~/.mandatehub-operator/operator.log
+     Stop:     launchctl unload ~/Library/LaunchAgents/com.mandatehub.operator.plist -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.mandatehub.operator</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/CHANGEME/mandatehub/.venv/bin/python</string>
+    <string>/Users/CHANGEME/mandatehub/deploy/local/operator.py</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>MANDATEHUB_FACILITATOR_URL</key><string>https://x402.org/facilitator</string>
+    <key>MANDATEHUB_PAY_TO</key><string>0xCHANGEME</string>
+    <key>MANDATEHUB_PORT</key><string>8402</string>
+    <key>MANDATEHUB_NETWORK</key><string>base-sepolia</string>
+    <!-- No private key here: the operator (merchant side) never holds the agent key. -->
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/Users/CHANGEME/.mandatehub-operator/operator.log</string>
+  <key>StandardErrorPath</key><string>/Users/CHANGEME/.mandatehub-operator/operator.log</string>
+</dict>
+</plist>

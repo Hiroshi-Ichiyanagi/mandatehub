@@ -21,6 +21,15 @@ BASE_SEPOLIA_USDC = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
 USDC_DECIMALS = 6
 # 参考: 検証済み domain separator = 0x71f17a3b2ff373b803d70a5a07c046c1a2bc8e89c09ef722fcb047abe94c9818
 
+# Base MAINNET（2026-07-21 オンチェーン検証済み: name()/version()/DOMAIN_SEPARATOR() を
+# eth_call で読み、オフライン再計算と byte-exact 一致を確認）。
+# ⚠️ EIP-712 domain name は "USD Coin"（Sepolia の "USDC" とは異なる）。Sepolia の
+# extra {"name":"USDC"} を mainnet に流用すると署名が全て無効になる。
+BASE_MAINNET_CHAIN_ID = 8453
+BASE_MAINNET_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+BASE_MAINNET_USDC_DOMAIN = {"name": "USD Coin", "version": "2"}
+# 参考: 検証済み domain separator = 0x02fa7265e7c5d81118673727957699e4d68f74cd74b7db77da710fe8a2c7834f
+
 _CHAIN_IDS: dict[str, int] = {
     "base-sepolia": 84532,
     "base": 8453,
