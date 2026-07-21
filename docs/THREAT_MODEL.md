@@ -49,8 +49,10 @@ Each row: the claim, the enforcing code, and the test that would fail if it brok
 1. **Single-writer assumption.** In-process serialization + private SQLite files. Two
    processes on the same files, or any multi-worker deployment, voids the replay/budget
    guarantees until the constraints move into a shared store (Postgres/D1). *(H2 remainder.)*
-2. **No auth / rate limiting on the operator HTTP surface.** The reference operator binds
-   127.0.0.1 and expects a tunnel in front; it has no API auth of its own.
+2. **No auth on the operator HTTP surface.** The reference operator binds 127.0.0.1 and
+   expects a tunnel in front; it has no API auth of its own. (Rate limiting IS available —
+   `MANDATEHUB_RATE_PER_MIN`, a native mandate velocity cap enforced fail-closed and
+   restart-safe; edge DDoS protection is the tunnel/CDN's job.)
 3. **`BestExecSettler` contract is unbuilt.** On-chain atomic split / no-withholding / nonce
    enforcement for best-exec is specified (`specs/best-exec.md` §7) but does not exist; the
    offline layer says so (`settlementPlane:"in-ledger"`).
@@ -82,5 +84,5 @@ Each row: the claim, the enforcing code, and the test that would fail if it brok
 ## 6. Reproduction environment
 
 Everything is reproducible with `pip install -e ".[test]" && python -m pytest -q`
-(241 tests, stdlib-only runtime) plus the runnable examples; the live path is
+(242 tests, stdlib-only runtime) plus the runnable examples; the live path is
 re-runnable via [`docs/TESTNET.md`](TESTNET.md) with faucet funds only.

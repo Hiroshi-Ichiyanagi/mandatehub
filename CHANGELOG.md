@@ -9,6 +9,10 @@ APIs may change while the project is pre-1.0.
 ## [Unreleased]
 
 ### Added
+- **Native rate limiting** — `MANDATEHUB_RATE_PER_MIN` caps the operator's settlements per
+  rolling 60s using the mandate's own velocity policy (persisted in `mandate.json`, so it
+  survives restarts — re-derived from the ledger, not a process counter). Over-rate calls
+  return HTTP 429 `WINDOW_VELOCITY_EXCEEDED`, denied before any facilitator call.
 - **Live HTML dashboard** — the operator's `/` serves a server-rendered, no-JS dashboard to
   browsers (settlements, revenue, budget left, per-day table, audit root, how-to-pay) under a
   strict CSP, while API clients still get JSON (content negotiation on `Accept`).
