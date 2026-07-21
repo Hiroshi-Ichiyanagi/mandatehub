@@ -9,6 +9,9 @@ APIs may change while the project is pre-1.0.
 ## [Unreleased]
 
 ### Added
+- **Live HTML dashboard** — the operator's `/` serves a server-rendered, no-JS dashboard to
+  browsers (settlements, revenue, budget left, per-day table, audit root, how-to-pay) under a
+  strict CSP, while API clients still get JSON (content negotiation on `Accept`).
 - **Revenue & usage metrics** — the operator serves `GET /metrics` (settlements, revenue,
   unique payers, per-day breakdown) and `deploy/local/stats.py` prints the same report
   offline (`--json` too); one shared computation (`_metrics.py`) keeps the live endpoint and

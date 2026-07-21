@@ -206,6 +206,66 @@ class Operator:
         }, {"X-PAYMENT-RESPONSE": encode_x_payment_response(s)}
 
 
+def _esc(x: object) -> str:
+    import html
+    return html.escape(str(x))
+
+
+def _dashboard_html(op: "Operator", public_url: str) -> str:
+    """Server-rendered, no-JS live dashboard (works under a strict CSP)."""
+    from _metrics import compute_metrics
+    at = _now()
+    h = op.health()
+    m = compute_metrics(op.ledger, now=at)
+    net = op.requirements.network
+    price = int(op.requirements.max_amount_required) / 1e6
+    rows = "".join(
+        f"<tr><td>{_esc(day)}</td><td style='text-align:right'>{d['count']}</td>"
+        f"<td style='text-align:right'>{d['revenue_cents']/1e6:.6f}</td></tr>"
+        for day, d in m["per_day"].items()
+    ) or "<tr><td colspan='3' style='color:#888'>no settlements yet</td></tr>"
+    return f"""<!doctype html><html lang=en><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>mandatehub operator — live</title><style>
+:root{{color-scheme:light dark}}
+body{{font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+max-width:760px;margin:0 auto;padding:48px 20px}}
+h1{{margin:0 0 .1em}}.tag{{color:#888;margin:0 0 1.6em}}
+.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:24px 0}}
+.card{{border:1px solid #8884;border-radius:12px;padding:16px}}
+.card .n{{font-size:1.7rem;font-weight:600}}.card .l{{color:#888;font-size:.85rem}}
+table{{width:100%;border-collapse:collapse;margin-top:8px}}
+td,th{{padding:6px 8px;border-bottom:1px solid #8883;text-align:left}}
+code,pre{{font-family:ui-monospace,Menlo,monospace}}
+pre{{background:#8881;border-radius:10px;padding:12px;overflow:auto}}
+a{{color:#1a56db}}@media(prefers-color-scheme:dark){{a{{color:#6ea8ff}}}}
+.dot{{color:#2ea043}}</style></head><body>
+<h1><span class=dot>●</span> mandatehub operator</h1>
+<p class=tag>A live x402 resource server with a mandate gate — budget-capped, replay-proof,
+proof-carrying payments settling real USDC on <b>{_esc(net)}</b>.</p>
+<div class=grid>
+<div class=card><div class=n>{m['settlements']}</div><div class=l>settlements</div></div>
+<div class=card><div class=n>{m['revenue_cents']/1e6:.4f}</div><div class=l>USDC revenue</div></div>
+<div class=card><div class=n>{m['unique_payees']}</div><div class=l>unique payees</div></div>
+<div class=card><div class=n>{h['remaining_cents']/1e6:.2f}</div><div class=l>USDC budget left</div></div>
+</div>
+<h3>Pay it</h3>
+<pre>pip install 'mandatehub[evm]'
+export MANDATEHUB_AGENT_PRIVATE_KEY=0x...   # a {_esc(net)}-funded key
+python examples/x402_pay.py {_esc(public_url)}/quote</pre>
+<p>Price: <b>{price:.6f} USDC</b> per call · endpoints:
+<a href="{_esc(public_url)}/healthz">/healthz</a> ·
+<a href="{_esc(public_url)}/metrics">/metrics</a> · <code>/quote</code> (402 → pay).</p>
+<h3>Settlements by day</h3>
+<table><tr><th>day</th><th style='text-align:right'>calls</th>
+<th style='text-align:right'>USDC</th></tr>{rows}</table>
+<p class=tag style="margin-top:2em">audit root <code>{_esc(h['audit_root'][:16])}…</code> ·
+<a href="https://github.com/Hiroshi-Ichiyanagi/mandatehub">source</a> ·
+<a href="https://mandatehub.ichiyanagi1111.workers.dev">about</a><br>
+Self-funded pilot; mainnet is the operator's call, not an audited guarantee.</p>
+</body></html>"""
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -254,6 +314,18 @@ def main() -> None:
                 status, extra = 200, {}
                 body = compute_metrics(op.ledger, now=_now())
             elif self.path == "/" or self.path == "":
+                # Browsers get a human dashboard; API clients get JSON.
+                if "text/html" in (self.headers.get("Accept") or ""):
+                    html = _dashboard_html(op, public_url).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.send_header("Content-Security-Policy",
+                                     "default-src 'none'; style-src 'unsafe-inline'; "
+                                     "img-src 'self' https:; base-uri 'none'")
+                    self.send_header("Content-Length", str(len(html)))
+                    self.end_headers()
+                    self.wfile.write(html)
+                    return
                 status, extra = 200, {}
                 body = {
                     "service": "mandatehub operator",
