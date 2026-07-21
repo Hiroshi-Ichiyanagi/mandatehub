@@ -9,6 +9,10 @@ APIs may change while the project is pre-1.0.
 ## [Unreleased]
 
 ### Added
+- **Revenue & usage metrics** — the operator serves `GET /metrics` (settlements, revenue,
+  unique payers, per-day breakdown) and `deploy/local/stats.py` prints the same report
+  offline (`--json` too); one shared computation (`_metrics.py`) keeps the live endpoint and
+  the offline report identical. The monitor surfaces `revenue`/`total_settled`.
 - **Ops tooling for a live operator** (`deploy/local/`, offline, read-only): `backup.py`
   (WAL-safe online snapshots that self-reject if the audit chain doesn't verify + retention),
   `verify_state.py` (independent re-derivation of budget/collateralization + audit-chain

@@ -64,7 +64,7 @@ python -m examples.x402_pay https://mandatehub.obolpay.xyz/quote
 # → 200 + data + on-chain settlement tx + ProofOfMandate</code></pre>
       <p class="tag" style="font-size:.85rem;margin:.6em 0 0">Endpoints:
       <a href="https://mandatehub.obolpay.xyz/">/</a> ·
-      <a href="https://mandatehub.obolpay.xyz/healthz">/healthz</a> · <code>/quote</code> (402 → pay).
+      <a href="https://mandatehub.obolpay.xyz/healthz">/healthz</a> · <a href="https://mandatehub.obolpay.xyz/metrics">/metrics</a> · <code>/quote</code> (402 → pay).
       Self-funded pilot; mainnet is the owner's call, not an audited guarantee.</p>
     </div>
 
@@ -87,7 +87,7 @@ python -m examples.x402_pay https://mandatehub.obolpay.xyz/quote
     <pre><code>pip install mandatehub            # once published
 # or, from source:
 pip install -e ".[test]"
-python -m pytest -q               # 239 passed</code></pre>
+python -m pytest -q               # 240 passed</code></pre>
 
     <h2>Design identity</h2>
     <ul>

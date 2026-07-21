@@ -59,6 +59,12 @@ def main() -> int:
             problems.append("healthz ok=false")
         parts.append(f"health=up remaining={h.get('remaining_cents')} "
                      f"settled={h.get('settled_this_process')} denied={h.get('denied_this_process')}")
+        try:
+            m = _get_json(public.rstrip("/") + "/metrics")
+            parts.append(f"revenue={m.get('revenue_cents', 0) / 1e6:.4f}USDC "
+                         f"total_settled={m.get('settlements')}")
+        except Exception:
+            pass
     except (HTTPError, URLError, TimeoutError, ValueError) as e:
         problems.append(f"healthz unreachable: {e!r}")
         parts.append("health=DOWN")

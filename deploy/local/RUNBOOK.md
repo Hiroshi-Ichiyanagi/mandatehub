@@ -111,6 +111,12 @@ python deploy/local/verify_state.py                 # STATE CONSISTENT / INVALID
 tail -f ~/.mandatehub-operator/{monitor,backup}.log
 ```
 
+**Revenue & usage:** the operator serves `GET /metrics` (settlements, revenue, unique
+payers, per-day breakdown, derived from the ledger); `deploy/local/stats.py` prints the same
+report offline from a data dir or a backup (`--json` for machine output). The monitor line
+includes `revenue=…USDC total_settled=…`. Both use one shared computation (`_metrics.py`), so
+the live endpoint and the offline report can never disagree.
+
 **Restore drill:** stop the operator, copy a snapshot's three files into the data dir, run
 `verify_state.py` to confirm, restart. Because all state is re-derived from those files, the
 operator resumes with the exact budget/replay/lifecycle from snapshot time.
