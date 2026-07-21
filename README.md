@@ -7,6 +7,8 @@
 
 **Site:** <https://mandatehub.ichiyanagi1111.workers.dev> · **PyPI:** `pip install mandatehub`
 
+**Live service:** <https://mandatehub.obolpay.xyz> — a running mandate-gated x402 resource server settling real USDC on Base. Pay it with any x402 client (`python examples/x402_pay.py https://mandatehub.obolpay.xyz/quote`).
+
 A small, self-contained **verification core** for **provable autonomous
 machine-to-machine payment**. It does not execute payments on chain — it makes an
 autonomous agent's spending **provably bounded, best-executed, and honestly settled**, as

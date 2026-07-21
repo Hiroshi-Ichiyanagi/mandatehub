@@ -92,5 +92,6 @@ jobs:
       - name: Cloudflare worker skeleton — compiles + vendor script works
         run: |
           python -m py_compile deploy/cloudflare/worker.py
+          python -m py_compile examples/x402_pay.py deploy/local/operator.py deploy/local/backup.py deploy/local/verify_state.py deploy/local/monitor.py
           (cd deploy/cloudflare && sh vendor.sh)
           python -c "import sys; sys.path.insert(0,'deploy/cloudflare'); import mandatehub; print('vendored', mandatehub.__version__)"

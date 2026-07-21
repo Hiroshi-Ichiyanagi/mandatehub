@@ -53,6 +53,21 @@
       artifacts. Standard library only, zero runtime dependencies.
     </p>
 
+    <div class="card" style="border-color:var(--accent)">
+      <h3>🟢 Live service — <a href="https://mandatehub.obolpay.xyz">mandatehub.obolpay.xyz</a></h3>
+      <p>A running x402 resource server with a mandate gate: budget-capped, replay-proof,
+      proof-carrying payments, settling real USDC on Base via Coinbase CDP. Pay it with any
+      x402 client:</p>
+      <pre style="margin-top:10px"><code>pip install 'mandatehub[evm]'
+export MANDATEHUB_AGENT_PRIVATE_KEY=0x...   # a Base-funded key
+python -m examples.x402_pay https://mandatehub.obolpay.xyz/quote
+# → 200 + data + on-chain settlement tx + ProofOfMandate</code></pre>
+      <p class="tag" style="font-size:.85rem;margin:.6em 0 0">Endpoints:
+      <a href="https://mandatehub.obolpay.xyz/">/</a> ·
+      <a href="https://mandatehub.obolpay.xyz/healthz">/healthz</a> · <code>/quote</code> (402 → pay).
+      Self-funded pilot; mainnet is the owner's call, not an audited guarantee.</p>
+    </div>
+
     <div class="grid">
       <div class="card">
         <h3>Intent / account abstraction (④)</h3>
