@@ -165,6 +165,20 @@ class Ledger:
         self._storage = storage
         self._listeners: list[Callable[[str, dict], None]] = []
 
+    @property
+    def storage(self) -> LedgerStorage:
+        return self._storage
+
+    def try_claim(self, key: str) -> bool:
+        """storage 層の原子的リプレイ claim に委譲する。
+
+        storage が try_claim を実装していれば（SQLite/Postgres）その結果を返す。未実装の
+        カスタム storage では常に True（単一プロセス前提。リプレイ防止は _authorize の
+        read-check が担う）。マルチワーカーでは storage 層の一意制約が最終防衛線になる。
+        """
+        claim = getattr(self._storage, "try_claim", None)
+        return claim(key) if callable(claim) else True
+
     # ---------- 口座管理 ----------
 
     def open_account(
