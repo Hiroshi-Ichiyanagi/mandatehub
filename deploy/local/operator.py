@@ -249,6 +249,10 @@ def main() -> None:
         def do_GET(self):  # noqa: N802
             if self.path == "/healthz":
                 status, body, extra = 200, op.health(), {}
+            elif self.path == "/metrics":
+                from _metrics import compute_metrics
+                status, extra = 200, {}
+                body = compute_metrics(op.ledger, now=_now())
             elif self.path == "/" or self.path == "":
                 status, extra = 200, {}
                 body = {
@@ -260,6 +264,7 @@ def main() -> None:
                     "pay": f"GET {public_url}/quote (returns 402 + accepts; pay via the "
                            "x402 exact scheme, e.g. pip install mandatehub)",
                     "health": f"{public_url}/healthz",
+                    "metrics": f"{public_url}/metrics",
                     "library": "https://github.com/Hiroshi-Ichiyanagi/mandatehub",
                     "site": "https://mandatehub.ichiyanagi1111.workers.dev",
                 }

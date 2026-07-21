@@ -107,3 +107,21 @@ def test_verify_state_ignores_whitespace_representation(tmp_path):
     conn.commit(); conn.close()
     r = _run("verify_state.py", data)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_stats_reports_revenue(tmp_path):
+    data = tmp_path / "data"; data.mkdir()
+    _make_operator_state(data)   # one 10000-cent settlement
+    r = _run("stats.py", data, {"MANDATEHUB_ARGS": ""})
+    # stats.py takes --json via argv; call directly for determinism
+    import os
+    import subprocess
+    env = {**os.environ, "MANDATEHUB_DATA_DIR": str(data), "PYTHONPATH": str(REPO)}
+    out = subprocess.run([sys.executable, str(DEPLOY / "stats.py"), "--json"],
+                         capture_output=True, text=True, env=env)
+    assert out.returncode == 0, out.stderr
+    m = json.loads(out.stdout)
+    assert m["settlements"] == 1
+    assert m["revenue_cents"] == 10000
+    assert m["unique_payees"] == 1
+    assert list(m["per_day"].values())[0]["count"] == 1
