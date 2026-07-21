@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- mandatehub monitor — edit CHANGEME, cp to ~/Library/LaunchAgents/, launchctl load it. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.mandatehub.monitor</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/CHANGEME/mandatehub/.venv/bin/python</string>
+    <string>/Users/CHANGEME/mandatehub/deploy/local/monitor.py</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>MANDATEHUB_AGENT_ADDR</key><string>0xCHANGEME</string>
+  </dict>
+  <key>StartInterval</key><integer>300</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/Users/CHANGEME/.mandatehub-operator/monitor.log</string>
+  <key>StandardErrorPath</key><string>/Users/CHANGEME/.mandatehub-operator/monitor.log</string>
+</dict>
+</plist>

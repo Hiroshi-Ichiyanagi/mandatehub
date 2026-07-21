@@ -9,6 +9,12 @@ APIs may change while the project is pre-1.0.
 ## [Unreleased]
 
 ### Added
+- **Ops tooling for a live operator** (`deploy/local/`, offline, read-only): `backup.py`
+  (WAL-safe online snapshots that self-reject if the audit chain doesn't verify + retention),
+  `verify_state.py` (independent re-derivation of budget/collateralization + audit-chain
+  verification; representation-robust, value-sensitive tamper detection), `monitor.py`
+  (public `/healthz` + agent balance + launchd checks), and hourly/5-min launchd templates.
+  Covered by `tests/test_ops_tools.py` (incl. a semantic-tamper detection test).
 - **`IntentSettlementEngine.rehydrate_mandate(mandate)`** (H2) — re-attach a mandate to a
   restarted engine over file-backed storage without double history (no new audit event, no
   collateral re-check), with fail-closed guards (double-attach, wrong ledger, child-before-
