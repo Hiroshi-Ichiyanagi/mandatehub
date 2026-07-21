@@ -18,6 +18,9 @@ value; a durable ledger (Cloudflare D1) is gate **H2**. Full design in
 npm i -g wrangler
 wrangler login                       # your Cloudflare account
 cd deploy/cloudflare
+sh vendor.sh                         # REQUIRED once (and after package changes): copies the
+                                     # stdlib-only mandatehub/ package next to worker.py so
+                                     # the bundle can import it (not a Pyodide built-in)
 wrangler dev                         # run on the local edge runtime
 wrangler deploy                      # publish
 ```
@@ -31,6 +34,13 @@ wrangler secret put MANDATEHUB_AGENT_PRIVATE_KEY   # throwaway testnet key
 
 Without secrets the Worker still serves the `402` handshake and the in-ledger (mock) settle for
 a demo.
+
+## Protocol note
+
+This demo speaks mandatehub's **Phase-1 internal 402 protocol** (`PAYMENT-SIGNATURE` header,
+in-ledger network) — not the x402 v1 wire (`X-PAYMENT`). A real x402 v1 client will get a 402
+with the internal requirements format. Wiring the v1 `RemoteFacilitatorAdapter` + secrets in is
+the upgrade path (see `docs/TESTNET.md`).
 
 ## Verification status (honest)
 

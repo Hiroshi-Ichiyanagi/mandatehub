@@ -57,3 +57,40 @@ jobs:
           python -m pip install --upgrade pip build twine
           python -m build
           twine check dist/*
+
+  examples:
+    name: run all offline examples
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: python -m pip install --upgrade pip && pip install -e .
+      - name: Offline examples (deterministic; no network)
+        run: |
+          python examples/intent_mandate_settlement.py
+          python examples/best_execution_recapture.py
+          python examples/session_key_submandate.py
+          python examples/x402_facilitator.py
+          python examples/x402_remote_settle.py
+          python examples/x402_best_exec.py
+      - name: Preflight — happy path exits 0 (StubSigner, offline)
+        env:
+          MANDATEHUB_FACILITATOR_URL: https://x402.org/facilitator
+          MANDATEHUB_PAY_TO: "0x857b06519E91e3A54538791bDbb0E22373e36b66"
+        run: python examples/x402_live_preflight.py
+      - name: Preflight — bad config exits non-zero
+        run: |
+          set +e
+          MANDATEHUB_FACILITATOR_URL=http://evil.example MANDATEHUB_PAY_TO=0x857b06519E91e3A54538791bDbb0E22373e36b66 python examples/x402_live_preflight.py && exit 1
+          MANDATEHUB_FACILITATOR_URL=https://x402.org/facilitator MANDATEHUB_PAY_TO=banana python examples/x402_live_preflight.py && exit 1
+          MANDATEHUB_FACILITATOR_URL=https://x402.org/facilitator MANDATEHUB_PAY_TO=0x857b06519E91e3A54538791bDbb0E22373e36b66 MANDATEHUB_AMOUNT=-5 python examples/x402_live_preflight.py && exit 1
+          echo "all bad configs correctly rejected"
+      - name: Cloudflare worker skeleton — compiles + vendor script works
+        run: |
+          python -m py_compile deploy/cloudflare/worker.py
+          (cd deploy/cloudflare && sh vendor.sh)
+          python -c "import sys; sys.path.insert(0,'deploy/cloudflare'); import mandatehub; print('vendored', mandatehub.__version__)"

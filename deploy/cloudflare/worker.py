@@ -31,34 +31,37 @@ from mandatehub.x402 import Facilitator, PaymentRequirements, serve_once
 
 # Build the demo facilitator once per isolate. The window is anchored to "now" so requests at
 # runtime fall inside it (the offline examples use a fixed T; a live edge Worker cannot).
-_BOOT = datetime.now(timezone.utc)
+#
+# Everything that draws entropy (uuid4 in account/tx ids) or reads the clock is deferred
+# into on_fetch: the Workers runtime disallows crypto.getRandomValues / Date.now in global
+# scope (module import happens at snapshot/deploy time), so a module-level build would fail
+# to load. Lazy per-isolate init keeps it inside a request context.
+_FAC = None
+_PAYEE = None
 
 
 def _usdc(n: int) -> Money:
     return Money.from_units(n, Currency.USDC)
 
 
-def _build_facilitator() -> tuple[Facilitator, str]:
+def _build_facilitator(boot: datetime) -> "tuple[Facilitator, str]":
     ledger = Ledger(SQLiteLedgerStorage(":memory:"))
     audit = AuditLog(":memory:")
     plat = ledger.open_account(OwnerType.PLATFORM, Currency.USDC, "platform")
     escrow = ledger.open_account(OwnerType.PLATFORM, Currency.USDC, "escrow")
-    b = TransactionBuilder("DEPOSIT", "ops", initiated_at=_BOOT)
+    b = TransactionBuilder("DEPOSIT", "ops", initiated_at=boot)
     b.transfer(plat.account_id, escrow.account_id, _usdc(100))
     ledger.post(b.build())
-    ledger.settle(b.transaction_id, settled_at=_BOOT)
+    ledger.settle(b.transaction_id, settled_at=boot)
     payee = ledger.open_account(OwnerType.USER, Currency.USDC, "api-provider")
     eng = IntentSettlementEngine(ledger, audit_log=audit)
     eng.create_mandate(
         mandate_id="m1", principal_id="agent", escrow_account_id=escrow.account_id,
         budget_cap=_usdc(100), allowed_purposes=frozenset(["API_CALL"]),
-        valid_from=_BOOT - timedelta(days=1), valid_until=_BOOT + timedelta(days=365),
-        created_at=_BOOT, per_transaction_limit=_usdc(40),
+        valid_from=boot - timedelta(days=1), valid_until=boot + timedelta(days=365),
+        created_at=boot, per_transaction_limit=_usdc(40),
     )
     return Facilitator(eng), payee.account_id
-
-
-_FAC, _PAYEE = _build_facilitator()
 
 
 def _requirements(resource: str, max_amount_cents: int) -> PaymentRequirements:
@@ -70,11 +73,17 @@ def _requirements(resource: str, max_amount_cents: int) -> PaymentRequirements:
 
 
 async def on_fetch(request, env):  # noqa: ANN001 — Workers runtime signature
+    global _FAC, _PAYEE
+    if _FAC is None:
+        _FAC, _PAYEE = _build_facilitator(datetime.now(timezone.utc))
+
     max_amount_cents = int(getattr(env, "MANDATEHUB_MAX_AMOUNT", "10000") or "10000")
     resource = getattr(env, "MANDATEHUB_RESOURCE", request.url)
 
-    # Case-insensitive header dict from the incoming request.
-    headers = {k: v for k, v in request.headers}
+    # serve_once only reads the payment header; fetch it via .get() (guaranteed across
+    # Workers SDK versions) instead of relying on Headers iteration semantics.
+    sig = request.headers.get("PAYMENT-SIGNATURE")
+    headers = {"PAYMENT-SIGNATURE": sig} if sig else {}
 
     reqs = _requirements(resource, max_amount_cents)
     at = datetime.now(timezone.utc)

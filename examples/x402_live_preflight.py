@@ -22,7 +22,9 @@ smoke test; non-zero = fix the reported problem first.
 from __future__ import annotations
 
 import os
+import re
 import sys
+from urllib.parse import urlparse
 
 from mandatehub.x402 import (
     BASE_SEPOLIA_USDC,
@@ -56,9 +58,15 @@ def main() -> None:
     amount = os.environ.get("MANDATEHUB_AMOUNT", "10000")  # 0.01 USDC (6 decimals)
     network = os.environ.get("MANDATEHUB_NETWORK", "base-sepolia")
     asset = os.environ.get("MANDATEHUB_ASSET", BASE_SEPOLIA_USDC)
-    print(f"  {CHECK} env present (url, pay_to); amount={amount} network={network}")
+    if not (amount.isdigit() and int(amount) > 0):
+        _fail(f"MANDATEHUB_AMOUNT must be a positive integer in minor units, got {amount!r}")
+    if not re.fullmatch(r"0x[0-9a-fA-F]{40}", pay_to):
+        _fail(f"MANDATEHUB_PAY_TO must be a 0x-prefixed 20-byte hex address, got {pay_to!r}")
+    print(f"  {CHECK} env present + well-formed (amount={amount} network={network})")
 
     # 2. facilitator URL passes the https guard (construction only, no call) --
+    if not urlparse(url).hostname:
+        _fail(f"MANDATEHUB_FACILITATOR_URL has no hostname: {url!r}")
     try:
         RemoteFacilitatorAdapter(url, network=network)
     except FacilitatorError as e:
