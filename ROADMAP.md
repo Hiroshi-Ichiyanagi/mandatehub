@@ -26,7 +26,7 @@ discipline for both — and the staged path from this library to a running facil
   third-party re-verification. Offline accounting layer; the audited on-chain settler is out
   of core (§ hard gates).
 
-242 tests, 8 examples, determinism + import-discipline guards, zero third-party runtime deps
+244 tests, 8 examples, determinism + import-discipline guards, zero third-party runtime deps
 (EVM signing isolated behind the optional `[evm]` extra).
 
 ## Release track — take it public "the x402 way"
@@ -82,7 +82,7 @@ Publishing the open-source project is safe. **Moving real value is not, until:**
   settlement saturation. **Partially done:** single-process durability is built and verified —
   file-backed SQLite + `rehydrate_mandate`, restart-safe budget/replay (unit + live SIGKILL
   test), the [`deploy/local/`](deploy/local/) operator + [runbook](deploy/local/RUNBOOK.md).
-  Remaining: shared-store (Postgres/D1) constraints for multi-worker, KMS, auth/rate-limit.
+  Remaining: shared-store (Postgres/D1) for multi-worker — **designed + empirically validated** ([`docs/MULTIWORKER.md`](docs/MULTIWORKER.md): the unique-PK claim closes the replay race, proven with real concurrent processes in `tests/test_multiworker_poc.py`); the Postgres backend is the next step. Also KMS. (Rate limiting is done.)
 - **H3 — Legal / compliance review** — moving stablecoin value has regulatory implications;
   get counsel before mainnet. This is not legal advice.
 

@@ -9,6 +9,12 @@ APIs may change while the project is pre-1.0.
 ## [Unreleased]
 
 ### Added
+- **Multi-worker durability (H2) — designed + validated.** `docs/MULTIWORKER.md` specifies
+  the shared-store path: an atomic unique-PK claim on `(mandate_id, intent_id)` makes a
+  concurrent replay structurally un-postable, plus per-mandate `FOR UPDATE` for cross-intent
+  budget. `tests/test_multiworker_poc.py` proves it with real concurrent processes (8/8
+  double-settle under the current read-check vs exactly 1/8 with the claim). The Postgres
+  `LedgerStorage` backend is the next step (deferred until a Postgres instance is available).
 - **Native rate limiting** — `MANDATEHUB_RATE_PER_MIN` caps the operator's settlements per
   rolling 60s using the mandate's own velocity policy (persisted in `mandate.json`, so it
   survives restarts — re-derived from the ledger, not a process counter). Over-rate calls
