@@ -1,0 +1,170 @@
+"""Wave-3 products (deploy/local): CVE snapshot, gas oracle, URL liveness, content attestation.
+
+All offline: network is stubbed; the SSRF guard is exercised against non-routable targets
+that never require a real connection.
+"""
+from __future__ import annotations
+
+import importlib
+import io
+import json
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+DEPLOY = REPO / "deploy" / "local"
+
+
+def _load(monkeypatch):
+    monkeypatch.syspath_prepend(str(DEPLOY))
+    import netfetch
+    import products
+    importlib.reload(netfetch)
+    importlib.reload(products)
+    return products, netfetch
+
+
+def test_netfetch_ssrf_guard(monkeypatch):
+    """safe_fetch refuses non-public / non-http(s) targets with FetchError (never connects)."""
+    _, netfetch = _load(monkeypatch)
+    bad = ["http://127.0.0.1/", "http://localhost/", "http://169.254.169.254/latest/meta-data/",
+           "http://10.0.0.1/", "http://192.168.1.1/", "http://[::1]/", "http://0.0.0.0/",
+           "ftp://example.com/", "file:///etc/passwd", "not-a-url"]
+    for u in bad:
+        try:
+            netfetch.safe_fetch(u, timeout=3)
+            raise AssertionError(f"SSRF leak: {u} was not refused")
+        except netfetch.FetchError:
+            pass  # expected
+
+
+def test_gas_oracle_eip1559_deterministic(monkeypatch):
+    """Next base fee is the EXACT EIP-1559 update (reproducible), artifact self-hashes,
+    and the prediction is labeled not-financial-advice."""
+    P, _ = _load(monkeypatch)
+    assert P._next_base_fee(100, 15_000_000, 30_000_000) == 100      # at target -> unchanged
+    assert P._next_base_fee(100, 30_000_000, 30_000_000) == 112      # full -> +12.5%
+    assert P._next_base_fee(800, 0, 30_000_000) == 700               # empty -> -12.5%
+
+    monkeypatch.setattr(P, "_rpc", lambda url, m, pr: {
+        "number": "0x10", "hash": "0xabc", "timestamp": "0x64",
+        "baseFeePerGas": hex(50_000_000), "gasUsed": hex(20_000_000), "gasLimit": hex(30_000_000)})
+    g = P.gas_oracle({})
+    assert g["product"] == "base-gas-oracle" and g["as_of_block"] == 16
+    assert g["estimate_next_block"]["method"] == "eip1559-deterministic"
+    assert "not financial advice" in g["disclaimer"]
+    assert g["artifact_sha256"] == P._canonical_hash(
+        {k: v for k, v in g.items() if k != "artifact_sha256"})
+    assert P._gas_available() is True
+
+
+def test_cve_snapshot_validation_and_pinning(monkeypatch):
+    """CVE snapshot rejects bad ecosystems/packages for free and hash-pins OSV's response."""
+    P, _ = _load(monkeypatch)
+    assert "ecosystem must be" in P.cve_snapshot({"ecosystem": "BadEco", "package": "x"})["error"]
+    assert "package" in P.cve_snapshot({"ecosystem": "PyPI", "package": ""})["error"]
+
+    import urllib.request
+
+    def fake_open(req, timeout=0):
+        body = json.dumps({"vulns": [{"id": "GHSA-xxxx", "summary": "boom",
+            "modified": "2026-01-01", "aliases": ["CVE-2026-1"],
+            "severity": [{"type": "CVSS_V3", "score": "9.8"}]}]}).encode()
+        return io.BytesIO(body)
+    monkeypatch.setattr(urllib.request, "urlopen", fake_open)
+    c = P.cve_snapshot({"ecosystem": "PyPI", "package": "requests", "version": "2.31.0"})
+    assert c["vulnerability_count"] == 1 and c["vulnerability_ids"] == ["GHSA-xxxx"]
+    assert c["query"] == {"ecosystem": "PyPI", "package": "requests", "version": "2.31.0"}
+    assert "not our own completeness" in c["attestation"]
+    assert c["artifact_sha256"]
+
+
+def test_url_products_precheck_and_attestation(monkeypatch):
+    """url_precheck refuses malformed input for free (pre-charge); url_check /
+    content_attestation handle 2xx, non-2xx, and SSRF refusal without raising post-charge."""
+    P, netfetch = _load(monkeypatch)
+
+    # free pre-charge refusals (network-free)
+    assert P.url_precheck({"url": ""})[0] == 400
+    assert P.url_precheck({"url": "ftp://x/"})[0] == 400
+    assert P.url_precheck({"url": "http://x" * 400})[0] == 400
+    assert P.url_precheck({"url": "https://example.com/ok"}) is None
+
+    monkeypatch.setattr(P, "_rpc", lambda url, m, pr: {
+        "number": "0x10", "hash": "0xabc", "timestamp": "0x64",
+        "baseFeePerGas": "0x0", "gasUsed": "0x0", "gasLimit": "0x1"})
+    ok = {"url": "u", "host": "example.com", "status": 200, "reason": "OK",
+          "headers": {"content-type": "text/html"}, "body_sha256": "deadbeef",
+          "body_bytes": 10, "truncated": False}
+    monkeypatch.setattr(netfetch, "safe_fetch", lambda u, **k: ok)
+    uc = P.url_check({"url": "https://example.com"})
+    assert uc["status_code"] == 200 and uc["reachable"] and uc["content_sha256"] == "deadbeef"
+    ca = P.content_attestation({"url": "https://example.com"})
+    assert ca["attested"] is True and ca["anchor"]["block_number"] == 16
+    assert "NOT their truthfulness" in ca["attestation"]
+
+    # non-2xx: still a paid, honest result — attested=False with the observed status
+    monkeypatch.setattr(netfetch, "safe_fetch",
+                        lambda u, **k: {**ok, "status": 404, "reason": "NF", "body_sha256": "abc"})
+    ca2 = P.content_attestation({"url": "https://example.com/missing"})
+    assert ca2["attested"] is False and ca2["observed_status"] == 404
+
+    # SSRF refusal inside build: returns a refused dict, never raises after charge
+    def boom(u, **k):
+        raise netfetch.FetchError("nope")
+    monkeypatch.setattr(netfetch, "safe_fetch", boom)
+    assert P.url_check({"url": "https://x"})["refused"] is True
+    assert P.content_attestation({"url": "https://x"})["refused"] is True
+
+
+def test_availability_probes_are_cached(monkeypatch):
+    """Unpaid catalog renders (/, agents.json) call available() per product — those probes must
+    NOT amplify into repeated outbound OSV/RPC requests. One probe per TTL window, pass or fail."""
+    P, _ = _load(monkeypatch)
+    calls = {"gas": 0, "osv": 0}
+
+    monkeypatch.setattr(P, "_latest_block", lambda rpc=None: calls.__setitem__("gas", calls["gas"] + 1) or {"number": 1})
+    monkeypatch.setattr(P, "_osv_probe", lambda: calls.__setitem__("osv", calls["osv"] + 1) or True)
+    P._avail_cache.clear()
+    for _ in range(10):
+        assert P._gas_available() is True
+        assert P._osv_available() is True
+    assert calls == {"gas": 1, "osv": 1}          # cached within TTL
+
+    # failures are negative-cached too (no hammering a down dependency)
+    P._avail_cache.clear()
+    def boom(*a, **k):
+        calls["gas"] += 1
+        raise RuntimeError("down")
+    monkeypatch.setattr(P, "_latest_block", boom)
+    calls["gas"] = 0
+    for _ in range(10):
+        assert P._gas_available() is False
+    assert calls["gas"] == 1
+
+
+def test_netfetch_privileged_ports_and_cve_version_cap(monkeypatch):
+    """Privileged ports other than 80/443 are refused (no probing SSH/SMTP/DBs via us);
+    cve-snapshot caps the version length."""
+    P, netfetch = _load(monkeypatch)
+    for u in ("http://example.com:22/", "https://example.com:25/", "http://example.com:993/"):
+        try:
+            netfetch.safe_fetch(u, timeout=3)
+            raise AssertionError(f"privileged port allowed: {u}")
+        except netfetch.FetchError as e:
+            assert "privileged port" in str(e)
+    assert "version too long" in P.cve_snapshot(
+        {"ecosystem": "PyPI", "package": "x", "version": "v" * 101})["error"]
+
+
+def test_catalog_wave3_registered(monkeypatch):
+    """The four new products are registered with the right gates and prechecks."""
+    P, _ = _load(monkeypatch)
+    for name in ("cve-snapshot", "gas-oracle", "url-liveness", "content-attestation"):
+        assert name in P.CATALOG, name
+    assert P.CATALOG["url-liveness"].precheck is P.url_precheck
+    assert P.CATALOG["content-attestation"].precheck is P.url_precheck
+    assert P.CATALOG["url-liveness"].available() is True   # per-URL result, no feed dependency
+    # the operator route dispatches precheck before settlement
+    src = (DEPLOY / "operator.py").read_text()
+    assert "prod.precheck(params)" in src

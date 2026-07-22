@@ -549,9 +549,16 @@ def main() -> None:
                                                 "unavailable", "needs": prod.needs}, {}
                 else:
                     params = {k: v[0] for k, v in parse_qs(parts.query).items()}
-                    status, body, extra = op.handle_payment(
-                        self.headers.get("X-PAYMENT"), product_reqs[name],
-                        resource_fn=lambda pr=prod, pa=params: pr.build(pa))
+                    xp = self.headers.get("X-PAYMENT")
+                    # Cheap, network-free input check BEFORE settlement so a caller is never
+                    # charged for a malformed request (only runs once a payment is presented).
+                    refusal = prod.precheck(params) if (xp and prod.precheck) else None
+                    if refusal is not None:
+                        status, body, extra = refusal[0], refusal[1], {}
+                    else:
+                        status, body, extra = op.handle_payment(
+                            xp, product_reqs[name],
+                            resource_fn=lambda pr=prod, pa=params: pr.build(pa))
             elif self.path == "/.well-known/ai-plugin.json":
                 status, extra = 200, {}
                 body = ai_plugin(public_url)
