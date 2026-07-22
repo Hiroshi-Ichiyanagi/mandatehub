@@ -175,6 +175,80 @@ def test_netfetch_privileged_ports_and_cve_version_cap(monkeypatch):
         {"ecosystem": "PyPI", "package": "x", "version": "v" * 101})["error"]
 
 
+def test_gas_priority_fees_from_feehistory(monkeypatch):
+    """Priority-fee tiers are the observed p10/p50/p90 tips from eth_feeHistory (real data),
+    not static constants; degrades to 'unavailable' without dropping the base-fee estimate."""
+    P, _ = _load(monkeypatch)
+
+    def fake_rpc(url, method, params):
+        if method == "eth_getBlockByNumber":
+            return {"number": "0x10", "hash": "0xabc", "timestamp": "0x64",
+                    "baseFeePerGas": hex(50_000_000), "gasUsed": hex(20_000_000),
+                    "gasLimit": hex(30_000_000)}
+        if method == "eth_feeHistory":
+            # two blocks, [p10,p50,p90] tips in wei
+            return {"reward": [[hex(1_000_000), hex(5_000_000), hex(20_000_000)],
+                               [hex(1_000_000), hex(5_000_000), hex(20_000_000)]]}
+        return None
+    monkeypatch.setattr(P, "_rpc", fake_rpc)
+    g = P.gas_oracle({})
+    pf = g["suggested_priority_fee"]
+    assert pf["method"] == "eth_feeHistory p10/p50/p90" and pf["window_blocks"] == 2
+    assert pf["economy_gwei"] == 0.001 and pf["standard_gwei"] == 0.005 and pf["fast_gwei"] == 0.02
+    assert g["artifact_sha256"]
+
+    # feeHistory empty -> priority marked unavailable, base-fee estimate still present
+    monkeypatch.setattr(P, "_rpc", lambda u, m, p: (
+        {"number": "0x10", "hash": "0xabc", "timestamp": "0x64", "baseFeePerGas": "0x1",
+         "gasUsed": "0x0", "gasLimit": "0x2"} if m == "eth_getBlockByNumber" else None))
+    g2 = P.gas_oracle({})
+    assert g2["suggested_priority_fee"]["method"] == "unavailable"
+    assert g2["estimate_next_block"]["method"] == "eip1559-deterministic"
+
+
+def test_attestation_signature_roundtrip(tmp_path, monkeypatch):
+    """content_attestation carries a publicly-verifiable EIP-191 signature when a key is set;
+    the signer recovers to the published attest_signer_address(). Unsigned without a key."""
+    P, netfetch = _load(monkeypatch)
+    try:
+        from eth_account import Account
+        from eth_account.messages import encode_defunct
+    except Exception:
+        import pytest
+        pytest.skip("eth-account not installed in this environment")
+
+    # deterministic throwaway key (test-only)
+    key = "0x" + "11" * 32
+    kf = tmp_path / "attest.key"
+    kf.write_text(key)
+    monkeypatch.setenv("MANDATEHUB_ATTEST_KEY_FILE", str(kf))
+    P._attest_cache.clear()
+
+    addr = P.attest_signer_address()
+    assert addr == Account.from_key(key).address
+
+    monkeypatch.setattr(P, "_rpc", lambda u, m, p: {
+        "number": "0x10", "hash": "0xabc", "timestamp": "0x64",
+        "baseFeePerGas": "0x0", "gasUsed": "0x0", "gasLimit": "0x1"})
+    monkeypatch.setattr(netfetch, "safe_fetch", lambda u, **k: {
+        "url": u, "host": "h", "status": 200, "reason": "OK", "headers": {},
+        "body_sha256": "beef", "body_bytes": 4, "truncated": False})
+    a = P.content_attestation({"url": "https://example.com"})
+    sig = a["operator_signature"]
+    assert sig["scheme"] == "eip191-secp256k1" and sig["signer"] == addr
+    # a third party recovers the signer from (digest, signature) with no trust in us
+    recovered = Account.recover_message(
+        encode_defunct(text=a["artifact_sha256"]), signature=sig["signature"])
+    assert recovered == addr
+
+    # no key -> unsigned, but attestation still returned
+    monkeypatch.delenv("MANDATEHUB_ATTEST_KEY_FILE")
+    P._attest_cache.clear()
+    a2 = P.content_attestation({"url": "https://example.com"})
+    assert "operator_signature" not in a2 and a2["attested"] is True
+    assert P.attest_signer_address() is None
+
+
 def test_catalog_wave3_registered(monkeypatch):
     """The four new products are registered with the right gates and prechecks."""
     P, _ = _load(monkeypatch)
