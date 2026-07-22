@@ -1,0 +1,91 @@
+{
+  "method": "openunit",
+  "method_version": "v0.2",
+  "numeraire": "USD",
+  "weight_vintage": {
+    "label": "UN-WPP-2024 + WB-PPP-2024",
+    "basis": "population_share",
+    "frequency": "low; baseline=nominal FX, valuation=PPP (international $)",
+    "note": "One person, one vote (population weights). The baseline leg is nominal market FX; the valuation leg is PPP, so the unit is read in international dollars. realized_weight_at_valuation shows how real purchasing power redistributes effective weight toward lower-price economies."
+  },
+  "rounding": {
+    "precision": 50,
+    "mode": "ROUND_HALF_EVEN",
+    "display_dp": 6
+  },
+  "provenance": {
+    "population": {
+      "source": "United Nations, World Population Prospects 2024 Revision (medium variant), 2026 estimate",
+      "via": "https://www.worldometers.info/world-population/population-by-country/",
+      "retrieved": "2026-06-08"
+    },
+    "nominal_fx": {
+      "source": "ECB euro reference rates",
+      "date": "2026-05-15",
+      "url": "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
+    },
+    "ppp": {
+      "source": "World Bank, PPP conversion factor, GDP (LCU per international $), indicator PA.NUS.PPP (ICP)",
+      "url": "https://data.worldbank.org/indicator/PA.NUS.PPP",
+      "year": "2024",
+      "license": "CC BY-4.0",
+      "euro_area_method": "The World Bank publishes no single Euro-area PA.NUS.PPP value, so the euro-area factor is a population-weighted blend of the 20 member states' WB PA.NUS.PPP: sum(pop_i * ppp_i) / sum(pop_i), with member populations from UN WPP 2024 (same basis as the euro-area headcount). Weighting by people rather than GDP follows openunit's one-person-one-vote stance and is a contestable choice (SPEC sec 10)."
+    }
+  },
+  "basket": [
+    {
+      "code": "USD",
+      "name": "United States",
+      "population": "349035494",
+      "fx_baseline_usd_per_unit": "1",
+      "fx_valuation_usd_per_unit": "1",
+      "ppp_factor_lcu_per_intl_usd": "1.0",
+      "ppp_status": "World Bank PA.NUS.PPP (ICP) 2024"
+    },
+    {
+      "code": "EUR",
+      "name": "Euro area",
+      "population": "347740855",
+      "fx_baseline_usd_per_unit": "1.1628",
+      "fx_valuation_usd_per_unit": "1.5553320488143286361374877088396173954230960411477",
+      "ppp_factor_lcu_per_intl_usd": "0.64294952371252610571162827560195652017937322895235",
+      "ppp_status": "World Bank PA.NUS.PPP (ICP) 2024"
+    },
+    {
+      "code": "CNY",
+      "name": "China",
+      "population": "1412914089",
+      "fx_baseline_usd_per_unit": "0.14682930525039775740586408061216758845367073263126",
+      "fx_valuation_usd_per_unit": "0.28308168675587841822872581010426755386432082909441",
+      "ppp_factor_lcu_per_intl_usd": "3.5325492491585",
+      "ppp_status": "World Bank PA.NUS.PPP (ICP) 2024"
+    },
+    {
+      "code": "JPY",
+      "name": "Japan",
+      "population": "122427731",
+      "fx_baseline_usd_per_unit": "0.0063072249945758298980256020828813191581688001735734",
+      "fx_valuation_usd_per_unit": "0.010586200364866099015547941889678474758036246705429",
+      "ppp_factor_lcu_per_intl_usd": "94.462599",
+      "ppp_status": "World Bank PA.NUS.PPP (ICP) 2024"
+    },
+    {
+      "code": "GBP",
+      "name": "United Kingdom",
+      "population": "69931528",
+      "fx_baseline_usd_per_unit": "1.3357840321654221711659965537047673750717978173464",
+      "fx_valuation_usd_per_unit": "1.5056771557156257669543011926468750423471700045020",
+      "ppp_factor_lcu_per_intl_usd": "0.664153",
+      "ppp_status": "World Bank PA.NUS.PPP (ICP) 2024"
+    },
+    {
+      "code": "INR",
+      "name": "India",
+      "population": "1476625576",
+      "fx_baseline_usd_per_unit": "0.010419915049196193343728157427818699930103769019840",
+      "fx_valuation_usd_per_unit": "0.048966830230331474798088301720064647421542804487394",
+      "ppp_factor_lcu_per_intl_usd": "20.4219876045922",
+      "ppp_status": "World Bank PA.NUS.PPP (ICP) 2024"
+    }
+  ]
+}

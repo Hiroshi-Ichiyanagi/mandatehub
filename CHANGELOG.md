@@ -9,6 +9,16 @@ APIs may change while the project is pre-1.0.
 ## [Unreleased]
 
 ### Added
+- **Product catalog wave 2 — constraints removed, three heavier assets modified to fit.**
+  Full-inventory re-survey of ~40 past projects (not just the original 5). New goods:
+  `govern-verify` REBUILT on the vendored **pure-Python `pyverify`** (from govern-open-verify)
+  so it runs on any host — with demo modes (`?bundle=genuine|tampered`, faithfully PASS/FAIL)
+  and **caller-submitted bundles** via base64 zip (≤256KB, zip-slip guarded); `openunit` —
+  the population-weighted unit-of-account valuation (UN-WPP+WB-PPP vintages), artifact
+  **re-verified live on every sale**; `kairos` — Kairos Convergence Scores for ~2000 JP
+  equities (multi-pillar tailwind convergence), an honest static snapshot with explicit
+  `as_of` and a "not live, not advice" note. Catalog is now 7 products, all
+  availability-gated.
 - **Product catalog** (`deploy/local/products.py`, generic `/product/<name>` route) — five
   real machine-payable goods, each availability-gated (never charged when it can't be served):
   `fx` (zero-spread cross-currency conversion + disclosure over ECB rates, spread=0bps,

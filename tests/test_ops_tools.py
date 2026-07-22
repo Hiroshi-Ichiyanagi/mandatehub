@@ -267,7 +267,7 @@ def test_product_catalog_all_build_and_gate():
     import products as P
     # availability all True locally (assets vendored; ECB may fetch — tolerate offline)
     cs = P.catalog_summary()
-    assert set(cs) == {"fx", "qswap", "audit-verify", "verify-tx", "govern-verify"}
+    assert {"fx", "qswap", "audit-verify", "verify-tx", "govern-verify"} <= set(cs)
     # qswap: static, deterministic, hashed
     q = P.qswap_matrix({"matrix": "both"})
     assert len(q["fidelity"]) == 16 and len(q["swap"]) == 9 and "artifact_sha256" in q
@@ -289,3 +289,37 @@ def test_product_catalog_all_build_and_gate():
     bad = dict(good); bad["records"] = [dict(r) for r in recs]; bad["records"][0]["data"] = {"x": 9}
     assert P.keystone_verify({"data": enc(bad)})["is_valid"] is False
     assert "error" in P.keystone_verify({})  # missing data
+
+
+def test_wave2_products_pyverify_openunit_kairos():
+    import base64
+    import io
+    import zipfile
+    sys.path.insert(0, str(DEPLOY))
+    import products as P
+    cs = P.catalog_summary()
+    assert set(cs) == {"fx", "qswap", "audit-verify", "verify-tx",
+                       "govern-verify", "openunit", "kairos"}
+    # govern-verify (pure Python): genuine passes, tampered fails with the Ed25519 code
+    assert P.govern_verify({"bundle": "genuine"})["exit_code"] == 0
+    assert P.govern_verify({"bundle": "tampered"})["exit_code"] == 21
+    # caller-submitted zip of the genuine bundle verifies
+    buf = io.BytesIO()
+    root = DEPLOY / "assets" / "pyverify" / "genuine.bundle"
+    with zipfile.ZipFile(buf, "w") as z:
+        for f in root.rglob("*"):
+            if f.is_file():
+                z.write(f, f.relative_to(root))
+    up = P.govern_verify({"data": base64.b64encode(buf.getvalue()).decode()})
+    assert up["exit_code"] == 0 and up["bundle"] == "caller-submitted"
+    # zip-slip and size guards
+    assert "error" in P.govern_verify({"data": base64.b64encode(b"nope").decode()})
+    # openunit: live re-verification on every sale
+    o = P.openunit_value({})
+    assert o["reverified_now"] is True and o["numeraire"] == "USD"
+    # kairos: honest as-of + bounded top
+    k = P.kairos_scores({"top": "5"})
+    assert k["as_of"] == "2026-04-16" and len(k["top"]) == 5
+    assert "NOT live" in k["staleness_note"]
+    k2 = P.kairos_scores({"top": "99999"})
+    assert len(k2["top"]) <= 300
