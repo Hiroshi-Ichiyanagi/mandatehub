@@ -1,0 +1,11 @@
+[
+  {"source":"llama.cpp/Q4_K_M","target":"llama.cpp/Q4_K_M","same_engine":true,"consistency_score":1.000000,"score_note":"","swap_cold_ms":1045.2,"swap_warm_ms":1073.2,"load_cold_ms":312.5,"peak_mem_bytes":2533949440,"deterministic":true},
+  {"source":"llama.cpp/Q4_K_M","target":"llama.cpp/Q8_0","same_engine":true,"consistency_score":0.030303,"score_note":"","swap_cold_ms":1405.7,"swap_warm_ms":1250.5,"load_cold_ms":557.6,"peak_mem_bytes":3315548160,"deterministic":true},
+  {"source":"llama.cpp/Q4_K_M","target":"mlx/4bit","same_engine":false,"consistency_score":null,"score_note":"cross-engine argmax divergence; use distribution metric (TODO)","swap_cold_ms":2564.6,"swap_warm_ms":2468.1,"load_cold_ms":1062.0,"peak_mem_bytes":2364964864,"deterministic":true},
+  {"source":"llama.cpp/Q8_0","target":"llama.cpp/Q4_K_M","same_engine":true,"consistency_score":0.151515,"score_note":"","swap_cold_ms":1748.4,"swap_warm_ms":1193.8,"load_cold_ms":708.1,"peak_mem_bytes":4081991680,"deterministic":true},
+  {"source":"llama.cpp/Q8_0","target":"llama.cpp/Q8_0","same_engine":true,"consistency_score":1.000000,"score_note":"","swap_cold_ms":1359.8,"swap_warm_ms":1340.0,"load_cold_ms":377.2,"peak_mem_bytes":4152180736,"deterministic":true},
+  {"source":"llama.cpp/Q8_0","target":"mlx/4bit","same_engine":false,"consistency_score":null,"score_note":"cross-engine argmax divergence; use distribution metric (TODO)","swap_cold_ms":2784.7,"swap_warm_ms":2626.7,"load_cold_ms":1045.3,"peak_mem_bytes":3099869184,"deterministic":true},
+  {"source":"mlx/4bit","target":"llama.cpp/Q4_K_M","same_engine":false,"consistency_score":null,"score_note":"cross-engine argmax divergence; use distribution metric (TODO)","swap_cold_ms":2084.1,"swap_warm_ms":1713.3,"load_cold_ms":598.3,"peak_mem_bytes":2331410432,"deterministic":true},
+  {"source":"mlx/4bit","target":"llama.cpp/Q8_0","same_engine":false,"consistency_score":null,"score_note":"cross-engine argmax divergence; use distribution metric (TODO)","swap_cold_ms":2255.4,"swap_warm_ms":2004.4,"load_cold_ms":725.6,"peak_mem_bytes":3113205760,"deterministic":true},
+  {"source":"mlx/4bit","target":"mlx/4bit","same_engine":true,"consistency_score":1.000000,"score_note":"","swap_cold_ms":3257.9,"swap_warm_ms":3242.4,"load_cold_ms":1045.8,"peak_mem_bytes":2054815744,"deterministic":true}
+]

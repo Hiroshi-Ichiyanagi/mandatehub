@@ -237,7 +237,7 @@ def test_products_ecb_parse_cache_and_gate(monkeypatch):
             return parsed
         raise RuntimeError("ecb down")
     monkeypatch.setattr(products, "_fetch_ecb", fake_fetch)
-    products._cache.update({"at": 0.0, "data": None})
+    products._ecb_cache.update({"at": 0.0, "data": None})
     q = products.ecb_quote(now=1000.0)
     assert q["ecb_date"] == "2026-07-21" and "artifact_sha256" in q
     # within TTL: cache, no refetch
@@ -257,3 +257,35 @@ def test_products_verify_tx_offline_paths():
     # RPC unreachable -> stated, not raised
     v = verify_usdc_tx("0x" + "a" * 64, rpc_url="https://127.0.0.1:1")
     assert v["verdict"] == "RPC_UNAVAILABLE"
+
+
+def test_product_catalog_all_build_and_gate():
+    import base64
+    import json as _json
+    sys.path.insert(0, str(DEPLOY))
+    sys.path.insert(0, str(DEPLOY / "assets" / "keystone"))
+    import products as P
+    # availability all True locally (assets vendored; ECB may fetch — tolerate offline)
+    cs = P.catalog_summary()
+    assert set(cs) == {"fx", "qswap", "audit-verify", "verify-tx", "govern-verify"}
+    # qswap: static, deterministic, hashed
+    q = P.qswap_matrix({"matrix": "both"})
+    assert len(q["fidelity"]) == 16 and len(q["swap"]) == 9 and "artifact_sha256" in q
+    # verify-tx: offline verdicts
+    assert P.CATALOG["verify-tx"].build({"tx": "bad"})["verdict"] == "INVALID_HASH"
+    # audit-verify: build a valid + a tampered submission
+    from audit import AuditLog
+    from anchor import make_signed_anchor
+    from dataclasses import asdict
+    log = AuditLog()
+    for i in range(3):
+        log.append(f"e{i}", "intent", x=i)
+    a = make_signed_anchor(log, b"secret")
+    recs = [asdict(r) for r in log.records()]
+    good = {"records": recs, "anchor": {"head": a.head, "length": a.length,
+            "signature": a.signature, "key_id": a.key_id}, "key": b"secret".hex()}
+    enc = lambda d: base64.b64encode(_json.dumps(d).encode()).decode()
+    assert P.keystone_verify({"data": enc(good)})["is_valid"] is True
+    bad = dict(good); bad["records"] = [dict(r) for r in recs]; bad["records"][0]["data"] = {"x": 9}
+    assert P.keystone_verify({"data": enc(bad)})["is_valid"] is False
+    assert "error" in P.keystone_verify({})  # missing data

@@ -72,7 +72,7 @@ log = logging.getLogger("mandatehub.operator")
 
 # real sellable products (ECB FX reference + on-chain tx verification)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from products import ecb_available, ecb_quote, verify_usdc_tx  # noqa: E402
+from products import CATALOG, catalog_summary, ecb_available, ecb_quote, verify_usdc_tx  # noqa: E402
 
 
 def _require(key: str) -> str:
@@ -454,6 +454,10 @@ def main() -> None:
     requirements_vtx = _dc.replace(requirements, resource=f"{public_url}/verify-tx",
                                    description="independent on-chain verification of a Base "
                                                "USDC transfer (receipt + decoded Transfer)")
+    # a paid requirements variant per catalog product (resource = /product/<name>)
+    product_reqs = {name: _dc.replace(requirements, resource=f"{public_url}/product/{name}",
+                                      description=prod.description[:120])
+                    for name, prod in CATALOG.items()}
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):  # noqa: N802
@@ -495,12 +499,12 @@ def main() -> None:
                             "replay-proof, proof-carrying autonomous payments",
                     "network": op.requirements.network,
                     "price_minor_units": op.requirements.max_amount_required,
-                    "products": {
-                        "/quote": "ECB official FX reference rates (EUR base, ~30 currencies), "
-                                  "canonically hashed (artifact_sha256) — never charged when stale",
-                        "/verify-tx?tx=0x…": "independent on-chain verification of a Base USDC "
-                                             "transfer (receipt status + decoded Transfer log)",
-                    },
+                    "products": dict(
+                        {"/quote": "ECB official FX reference rates (EUR base, ~30 currencies), "
+                                   "canonically hashed — never charged when stale"},
+                        **{f"/product/{n}" + (f" {i['params']}" if i['params'] else ""): i["description"]
+                           for n, i in catalog_summary().items()},
+                    ),
                     "pay": f"GET {public_url}/quote (returns 402 + accepts; pay via the "
                            "x402 exact scheme, e.g. pip install mandatehub)",
                     "health": f"{public_url}/healthz",
@@ -514,6 +518,22 @@ def main() -> None:
                     status, body, extra = 503, {"error": "data temporarily unavailable"}, {}
                 else:
                     status, body, extra = op.handle_payment(self.headers.get("X-PAYMENT"))
+            elif self.path.startswith("/product/"):
+                from urllib.parse import parse_qs, urlparse
+                parts = urlparse(self.path)
+                name = parts.path[len("/product/"):].split("/")[0]
+                prod = CATALOG.get(name)
+                if prod is None:
+                    status, body, extra = 404, {"error": f"unknown product: {name}",
+                                                "catalog": list(CATALOG)}, {}
+                elif not prod.available():
+                    status, body, extra = 503, {"error": f"product '{name}' temporarily "
+                                                "unavailable", "needs": prod.needs}, {}
+                else:
+                    params = {k: v[0] for k, v in parse_qs(parts.query).items()}
+                    status, body, extra = op.handle_payment(
+                        self.headers.get("X-PAYMENT"), product_reqs[name],
+                        resource_fn=lambda pr=prod, pa=params: pr.build(pa))
             elif self.path.startswith("/verify-tx"):
                 from urllib.parse import parse_qs, urlparse
                 q = parse_qs(urlparse(self.path).query)
@@ -528,7 +548,7 @@ def main() -> None:
             else:
                 status, body, extra = 404, {"error": "not found",
                                             "endpoints": ["/", "/healthz", "/metrics",
-                                                          "/quote", "/quote-v2", "/verify-tx"]}, {}
+                                                          "/quote", "/quote-v2", "/verify-tx", "/product/<name>"]}, {}
             data = json.dumps(body).encode()
             self.send_response(status)
             for k, v in extra.items():
