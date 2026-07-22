@@ -416,3 +416,48 @@ def test_discovery_routes_served_free(tmp_path, monkeypatch):
     src = (DEPLOY / "operator.py").read_text()
     for route in ("/.well-known/ai-plugin.json", "/.well-known/agents.json", "/openapi.json"):
         assert route in src
+
+
+def test_mcp_server_tools_and_preview_parsing(monkeypatch):
+    """examples/mcp_server.py imports (with mcp stubbed), registers its 4 tools, and preview()
+    correctly parses a 402 challenge without any network or key."""
+    import importlib.util
+    import types
+
+    # stub the optional `mcp` package so the module imports without it installed
+    fake = types.ModuleType("mcp"); server = types.ModuleType("mcp.server")
+    fastmcp = types.ModuleType("mcp.server.fastmcp")
+    class _FastMCP:
+        def __init__(self, name): self.name = name; self.tools = {}
+        def tool(self):
+            def deco(fn): self.tools[fn.__name__] = fn; return fn
+            return deco
+        def run(self): pass
+    fastmcp.FastMCP = _FastMCP
+    monkeypatch.setitem(sys.modules, "mcp", fake)
+    monkeypatch.setitem(sys.modules, "mcp.server", server)
+    monkeypatch.setitem(sys.modules, "mcp.server.fastmcp", fastmcp)
+
+    path = REPO / "examples" / "mcp_server.py"
+    spec = importlib.util.spec_from_file_location("mh_mcp_server", path)
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+
+    tools = mod.mcp.tools
+    assert set(tools) == {"discover", "openapi", "preview", "purchase"}
+
+    # preview() parses a canonical 402 body (no network — stub _get)
+    challenge = {"accepts": [{"scheme": "exact", "network": "base",
+                              "maxAmountRequired": "10000", "asset": "0xUSDC", "payTo": "0xME"}]}
+    monkeypatch.setattr(mod, "_get", lambda p, headers=None: (402, challenge))
+    out = mod.preview("/quote")
+    assert out["price_minor_units"] == "10000"
+    assert out["network"] == "base"
+    assert out["pay_to"] == "0xME"
+
+    # a 503 is surfaced as "not charged", never an error
+    monkeypatch.setattr(mod, "_get", lambda p, headers=None: (503, {"error": "stale"}))
+    assert mod.preview("/quote")["status"] == 503
+
+    # purchase() with no key refuses BEFORE any network call
+    monkeypatch.delenv("MANDATEHUB_AGENT_PRIVATE_KEY", raising=False)
+    assert "not set" in mod.purchase("/quote")["error"]
