@@ -9,6 +9,18 @@ APIs may change while the project is pre-1.0.
 ## [Unreleased]
 
 ### Added
+- **Product catalog** (`deploy/local/products.py`, generic `/product/<name>` route) — five
+  real machine-payable goods, each availability-gated (never charged when it can't be served):
+  `fx` (zero-spread cross-currency conversion + disclosure over ECB rates, spread=0bps,
+  canonically hashed), `qswap` (measured LLM backend-selection matrices — fidelity + swap
+  latency/memory across llama.cpp/mlx/candle, vendored), `audit-verify` (verify a
+  caller-submitted hash-chained audit log against its Ed25519/HMAC signed anchor — vendored
+  genesis-keystone), `verify-tx` (on-chain USDC transfer verification), and `govern-verify`
+  (offline govern execution-bundle verification via the govern-verify binary, gated on the
+  binary being present on the host — arm64/amd64 platform-specific). Sourced from Hiroshi's
+  own asset stack (x402-gateway / qswap / genesis-finance / genesis-keystone / govern).
+
+### Added (earlier)
 - **Multi-worker durability (H2) — built.** `mandatehub.storage_postgres.PostgresLedgerStorage`
   (`[postgres]` extra, psycopg) is a shared-store ledger mirroring the SQLite backend, plus an
   atomic unique-PK settlement claim (`try_claim`, `INSERT … ON CONFLICT`) now wired into the

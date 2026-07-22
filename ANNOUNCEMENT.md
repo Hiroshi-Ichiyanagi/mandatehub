@@ -31,7 +31,7 @@ honestly. Standard library only, zero runtime deps.
 
 What's real today:
 
-- **Library**: `pip install mandatehub` (`[evm]` for signing) — 244 tests, CI on 3.11–3.13.
+- **Library**: `pip install mandatehub` (`[evm]` for signing) — 249 tests, CI on 3.11–3.13.
 - **Live service**: <https://mandatehub.obolpay.xyz> — a running x402 resource server with a
   mandate gate, settling real USDC on Base via the Coinbase CDP facilitator. `/`, `/healthz`,
   `/metrics`, `/quote`.

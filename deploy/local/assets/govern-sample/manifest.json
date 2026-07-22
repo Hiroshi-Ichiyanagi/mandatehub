@@ -1,0 +1,126 @@
+{
+  "epoch_map": [
+    [
+      "b16f50589fb2f1068165725a2bf31e7d786c714bc429b2ffdc0b0678a2ff312e",
+      "e418ea36bbc90266"
+    ],
+    [
+      "9cad52a024958eaae042cb744c93ba23d2f49b4a1c033bd4ba891aa22bf7faa2",
+      "e418ea36bbc90266"
+    ],
+    [
+      "d2240ccc94988ab0222d44b55ed8da23c3dbfb818b59d914b2f1af0651b66f1f",
+      "e418ea36bbc90266"
+    ]
+  ],
+  "format": "integ-bundle-v1",
+  "meta_anchor_key": [
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17,
+    17
+  ],
+  "policy": {
+    "approvers": [
+      "ed25519:wFDFY3pE+oYp//PMzOIwDLNipj2Z2V/FQUUmb0MyRFo="
+    ],
+    "budget_minor": 1000,
+    "decision_tier": "AUTO",
+    "default_tool_tier": "CONFIRM",
+    "inference_tier": "AUTO",
+    "sequence_rules": [
+      {
+        "action": "fund_transfer",
+        "requires": "price_lookup"
+      }
+    ],
+    "tool_rules": [
+      {
+        "name": "fund_transfer",
+        "tier": "CONFIRM"
+      },
+      {
+        "name": "price_lookup",
+        "tier": "CONFIRM"
+      }
+    ]
+  },
+  "replay": null,
+  "run_id": "hero-pipeline-v1",
+  "server_info": null,
+  "steps": [
+    {
+      "gov": {
+        "action": "inference",
+        "cost": 0,
+        "outcome": "executed",
+        "tier": "AUTO"
+      },
+      "index": 0,
+      "payload_commitment": "a1ed1b0252eb9d02f49640627b4796c33a378635bdad89ba00a3f7e6df4fad62",
+      "policy_hash": "1e610b85c4d66a36fde6ec69c7483a8e09a6a187df075af2d186a9a1069f8bff",
+      "replayable": false,
+      "type": "inference"
+    },
+    {
+      "approval": {
+        "approver": "ed25519:wFDFY3pE+oYp//PMzOIwDLNipj2Z2V/FQUUmb0MyRFo=",
+        "sig": "F5O+kypuD9ju/whO/Kolg6/fLIQIySgUriMK6SpaqEznilPGuYiS7MEveN6na2vDNqfmLGLt+VlH23velahpCA=="
+      },
+      "gov": {
+        "action": "price_lookup",
+        "cost": 300,
+        "outcome": "executed",
+        "tier": "CONFIRM"
+      },
+      "index": 1,
+      "payload_commitment": "e691e2da70c8414cde4b74fa02c5bccfd5dc67861b20b6f06545c8546ab805f7",
+      "policy_hash": "1e610b85c4d66a36fde6ec69c7483a8e09a6a187df075af2d186a9a1069f8bff",
+      "replayable": false,
+      "tool_name": "price_lookup",
+      "type": "tool"
+    },
+    {
+      "gov": {
+        "action": "fund_transfer",
+        "cost": 800,
+        "outcome": "gated",
+        "tier": "DENY"
+      },
+      "index": 2,
+      "payload_commitment": "54d867d00c4de10d51ea3e9ced6693f873d513c84e8f821ceb72a895d5190edb",
+      "policy_hash": "1e610b85c4d66a36fde6ec69c7483a8e09a6a187df075af2d186a9a1069f8bff",
+      "replayable": false,
+      "tool_name": "fund_transfer",
+      "type": "tool"
+    }
+  ]
+}

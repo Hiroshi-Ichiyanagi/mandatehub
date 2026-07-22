@@ -1,0 +1,21 @@
+{
+  "consistency_proof": [
+    "48c7ab877db0ebadf4caa74c89e55733d64a72d450401e736417d2bbbdba71de",
+    "860849593904d26410dcebdbefde773076c6d5cc1ad881e945ffb9ba92ebedc9",
+    "7396e50c024e8f4f07f2f6187c5f975a7082ea77bd32f11cfa7ec687fbb92bc8",
+    "ded34280b045f3ea5e8cd23cf11997ab784ff592e085733571032f1228420818",
+    "59b25eb02e55c20b8f35ca7c05166643cb84ad6bf1af3d7096d7e1ee8c9e4e53",
+    "ba61e4081b72edd8dd1e9652f66182e8d9d1d36422f13e842dcb6b65058d484d"
+  ],
+  "format": "govern-sth-v0",
+  "log": "parent-ledger",
+  "log_pubkey": "ed25519:+AzM3OSuHAeuIIoq35mjEK5CB+Awb6AjYRCwaCe7uNA=",
+  "prior": {
+    "root": "3e059290040086239ceb96f9379d16fce0a8c1b8fb4e6ce0ed29822169048c37",
+    "sig": "2ohI6yF586lj4vuQxEp+2waES4v3WFZMWq8iko6fSZvStY8g4U6n8yAMDiFp2vE2dCs6gz1qvBJFl/9J2HUbCw==",
+    "tree_size": 13
+  },
+  "root": "221fa843f0df225bfc2f6fbcb31d5ec93ce5a4fb60632a9aded0ebb787440f3d",
+  "sig": "IMXWL500YcQw2OghCjUf3icE+u2IPPpxZRBG+hhIWzFSABkXwTLUuyqUGdReZZCTT8fKcyVm71nzwMlKvpOzCw==",
+  "tree_size": 26
+}
