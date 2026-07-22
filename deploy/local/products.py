@@ -68,9 +68,15 @@ def _fetch_ecb() -> dict:
         return _parse_ecb(r.read())
 
 
+ECB_RETRY_BACKOFF_SECONDS = 120  # after a failed fetch, don't hammer ECB every request
+
+
 def _ecb_data(now: float | None = None) -> dict | None:
     t = time.time() if now is None else now
-    if _ecb_cache["data"] is None or t - _ecb_cache["at"] > ECB_TTL_SECONDS:
+    stale = _ecb_cache["data"] is None or t - _ecb_cache["at"] > ECB_TTL_SECONDS
+    backing_off = t - _ecb_cache.get("last_attempt", -1e18) < ECB_RETRY_BACKOFF_SECONDS
+    if stale and not backing_off:
+        _ecb_cache["last_attempt"] = t   # negative-cache: stamp the attempt regardless
         try:
             _ecb_cache["data"] = _fetch_ecb()
             _ecb_cache["at"] = t
@@ -104,13 +110,13 @@ def fx_convert(params: dict) -> dict:
     per_eur = {"EUR": "1.0", **(d["rates"] if d else {})}
     if frm not in per_eur or to not in per_eur:
         return {"error": "unknown currency", "supported": sorted(per_eur)}
-    if not str(amount_raw).isdigit() or int(amount_raw) <= 0:
-        return {"error": "amount must be a positive integer in minor units"}
+    if not str(amount_raw).isdigit() or not (0 < int(amount_raw) <= 10 ** 15):
+        return {"error": "amount must be a positive integer in minor units (<= 1e15)"}
+    from decimal import Decimal, ROUND_HALF_UP
     amount = int(amount_raw)  # minor units of `from`
-    rate_from, rate_to = float(per_eur[frm]), float(per_eur[to])
-    # cross rate A->B = (per_eur[B] / per_eur[A]); integer minor-unit result, half-up
+    rate_from, rate_to = Decimal(per_eur[frm]), Decimal(per_eur[to])
     cross = rate_to / rate_from
-    target = (amount * rate_to * 1000 // int(rate_from * 1000)) if False else round(amount * cross)
+    target = int((Decimal(amount) * cross).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
     body = {
         "product": "fx-transparency", "ecb_date": d["date"] if d else None,
         "conversion": {"from": frm, "to": to, "from_minor_units": amount,
@@ -207,6 +213,12 @@ def _pyverify_available() -> bool:
     return (_PYVERIFY / "__main__.py").exists() and (_PYVERIFY / "genuine.bundle").exists()
 
 
+def _last_line_safe(out: str) -> str:
+    import re
+    line = out.strip().splitlines()[-1:][0][:200] if out.strip() else ""
+    return re.sub(r"(/[\w./-]+/)([\w.-]+)", r"\2", line)  # drop absolute dir paths
+
+
 def _run_pyverify(bundle_dir: Path) -> dict:
     import os
     env = {**os.environ, "PYTHONPATH": str(_ASSETS)}
@@ -214,7 +226,7 @@ def _run_pyverify(bundle_dir: Path) -> dict:
                        capture_output=True, text=True, timeout=60, env=env)
     return {"verdict": "OFFLINE-VERIFIED" if r.returncode == 0 else "FAIL",
             "exit_code": r.returncode,
-            "detail": (r.stdout or r.stderr).strip().splitlines()[-1:][0][:200] if (r.stdout or r.stderr).strip() else "",
+            "detail": _last_line_safe(r.stdout or r.stderr),
             "claims_checked": ["hash_chain", "ed25519_receipts", "witness_binding",
                                "sth_consistency"]}
 
@@ -244,8 +256,13 @@ def govern_verify(params: dict) -> dict:
             return {"product": "govern-bundle-verify", "error": "bundle zip exceeds 256KB cap"}
         with tempfile.TemporaryDirectory(prefix="mh-bundle-") as td:
             with zipfile.ZipFile(io.BytesIO(blob)) as z:
-                for n in z.namelist():           # zip-slip guard
-                    if n.startswith("/") or ".." in n:
+                infos = z.infolist()
+                if len(infos) > 256:
+                    return {"product": "govern-bundle-verify", "error": "too many zip entries"}
+                if sum(zi.file_size for zi in infos) > 8 * 1024 * 1024:  # decompressed cap 8MB
+                    return {"product": "govern-bundle-verify", "error": "bundle expands too large"}
+                for zi in infos:                 # zip-slip guard
+                    if zi.filename.startswith("/") or ".." in zi.filename:
                         return {"product": "govern-bundle-verify", "error": "unsafe zip paths"}
                 z.extractall(td)
             root = Path(td)

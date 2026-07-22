@@ -461,6 +461,23 @@ def main() -> None:
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):  # noqa: N802
+            try:
+                self._route()
+            except Exception:
+                # No unhandled exception may drop the connection (esp. after a settled
+                # payment). Log for reconciliation; return a generic 500, no traceback.
+                log.exception("unhandled error serving %s", self.path)
+                data = json.dumps({"error": "internal error"}).encode()
+                try:
+                    self.send_response(500)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                except Exception:
+                    pass
+
+        def _route(self):
             if self.path == "/healthz":
                 status, body, extra = 200, op.health(), {}
             elif self.path == "/quote-v2":
