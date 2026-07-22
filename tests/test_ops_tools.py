@@ -323,3 +323,39 @@ def test_wave2_products_pyverify_openunit_kairos():
     assert "NOT live" in k["staleness_note"]
     k2 = P.kairos_scores({"top": "99999"})
     assert len(k2["top"]) <= 300
+
+
+def test_security_review_fixes():
+    import base64
+    import io
+    import time
+    import zipfile
+    sys.path.insert(0, str(DEPLOY))
+    import products as P
+    # fx: oversized amount -> clean error, no OverflowError
+    assert "error" in P.fx_convert({"from": "USD", "to": "JPY", "amount": "9" * 400})
+    assert P.fx_convert({"from": "USD", "to": "JPY", "amount": "0"}).get("error")
+    # fx: Decimal cross-rate still correct for a normal amount
+    assert P.fx_convert({"from": "EUR", "to": "EUR", "amount": "1000"})["conversion"]["to_minor_units"] == 1000
+    # ECB negative-cache: a failing fetch is not retried within the backoff window
+    P._ecb_cache.update({"at": 0.0, "data": {"date": "x", "rates": {"USD": "1.1"}}, "last_attempt": -1e18})
+    calls = {"n": 0}
+    orig = P._fetch_ecb
+    def boom():
+        calls["n"] += 1
+        raise RuntimeError("down")
+    P._fetch_ecb = boom
+    try:
+        t = time.time() + P.ECB_TTL_SECONDS + 10
+        for _ in range(5):
+            P._ecb_data(now=t)
+        assert calls["n"] == 1  # one attempt, then backoff
+    finally:
+        P._fetch_ecb = orig
+    # zip-bomb: a tiny zip expanding past the decompressed cap is rejected before extraction
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("big", b"\0" * (50 * 1024 * 1024))
+    assert "too large" in P.govern_verify({"data": base64.b64encode(buf.getvalue()).decode()})["error"]
+    # detail path redaction
+    assert "/" not in P._last_line_safe("fail at /private/var/T/mh-bundle-x/manifest.json").split("manifest")[0][-3:]
