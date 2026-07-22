@@ -59,9 +59,11 @@ Each row: the claim, the enforcing code, and the test that would fail if it brok
 4. **Two hash domains.** Offline binding commitments are sha256 (stdlib); on-chain nonces are
    keccak256. Verified logically equivalent over the same preimage, but an auditor should
    confirm no cross-domain confusion is exploitable.
-5. **Facilitator trust.** `/settle` success is taken from the facilitator's response; the
-   operator does not independently confirm the on-chain tx (one RPC read would close this —
-   listed as hardening backlog).
+5. ~~Facilitator trust~~ — **closed 2026-07-22**: after every mainnet settle the operator
+   independently reads the tx receipt (`deploy/local/products.py:verify_usdc_tx`, decoded
+   USDC Transfer log) and returns it as `chainVerification` in the paid response; a
+   `REVERTED` receipt is logged critically as a divergence. (Observation stays best-effort:
+   an RPC outage never blocks the money path.)
 6. **Best-exec honesty bounds.** "Best of the *disclosed* candidates" only; a suppressed bid
    or fully-colluding solver pool is out of offline scope (documented in the spec).
 7. **Key handling is out of core.** `EthAccountSigner` takes a raw key from the caller;
@@ -84,5 +86,5 @@ Each row: the claim, the enforcing code, and the test that would fail if it brok
 ## 6. Reproduction environment
 
 Everything is reproducible with `pip install -e ".[test]" && python -m pytest -q`
-(246 tests, stdlib-only runtime) plus the runnable examples; the live path is
+(248 tests, stdlib-only runtime) plus the runnable examples; the live path is
 re-runnable via [`docs/TESTNET.md`](TESTNET.md) with faucet funds only.

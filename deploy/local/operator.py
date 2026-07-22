@@ -70,6 +70,10 @@ from mandatehub.x402 import (
 USDC = Currency.USDC
 log = logging.getLogger("mandatehub.operator")
 
+# real sellable products (ECB FX reference + on-chain tx verification)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from products import ecb_available, ecb_quote, verify_usdc_tx  # noqa: E402
+
 
 def _require(key: str) -> str:
     v = os.environ.get(key)
@@ -176,8 +180,10 @@ class Operator:
             "audit_root": self.audit.latest_hash(),
         }
 
-    def handle_payment(self, x_payment: str | None, requirements=None) -> tuple[int, dict, dict[str, str]]:
+    def handle_payment(self, x_payment: str | None, requirements=None,
+                       resource_fn=None) -> tuple[int, dict, dict[str, str]]:
         req = requirements or self.requirements
+        build_data = resource_fn or (lambda: ecb_quote() or {"error": "data unavailable"})
         if not x_payment:
             return 402, {"x402Version": 1, "error": "payment required",
                          "accepts": [req.to_wire()]}, {}
@@ -237,9 +243,17 @@ class Operator:
         self.settled_count += 1
         log.info("SETTLED %s on-chain tx=%s remaining=%s", auth.nonce[:18], s.transaction,
                  proof.remaining_cents)
+        # THREAT_MODEL gap #5: independently confirm the settlement on-chain (best-effort;
+        # observation never blocks the money path — the facilitator result stays authoritative
+        # for booking, but a REVERTED receipt is a divergence and is logged critically).
+        chain = verify_usdc_tx(s.transaction) if s.network == "base" else {"verdict": "SKIPPED"}
+        if chain.get("verdict") == "REVERTED":
+            log.critical("CHAIN DIVERGENCE: facilitator reported success but tx %s REVERTED",
+                         s.transaction)
         return 200, {
-            "data": {"quote": "BTC/USD 68,000", "ts": at.isoformat()},
+            "data": build_data(),
             "settlement": {"transaction": s.transaction, "network": s.network},
+            "chainVerification": chain,
             "proofOfMandate": {
                 "remaining_cents": proof.remaining_cents,
                 "total_settled_cents": proof.total_settled_cents,
@@ -266,8 +280,9 @@ def _v2_challenge(requirements, public_url: str) -> dict:
             "asset": r.asset,
             "payTo": r.pay_to,
             "resource": f"{public_url}/quote-v2",
-            "description": "mandatehub: a mandate-gated price quote. Pays real USDC on Base; "
-                           "every 200 carries an on-chain settlement tx + a ProofOfMandate.",
+            "description": "ECB official FX reference rates (EUR base, ~30 currencies), "
+                           "canonically hashed; every paid 200 carries the on-chain settlement "
+                           "tx, an independent chain verification, and a ProofOfMandate.",
             "mimeType": "application/json",
             "maxTimeoutSeconds": r.max_timeout_seconds,
             "extra": dict(r.extra or {}),
@@ -280,8 +295,11 @@ def _bazaar_extension(public_url: str) -> dict:
     """x402 Bazaar (CDP discovery) extension for /quote-v2. `schema` is a JSON Schema over the
     `info` object (input + output) — matching the shape of a listed resource."""
     output_example = {
-        "data": {"quote": "BTC/USD 68,000", "ts": "2026-07-21T00:00:00+00:00"},
+        "data": {"product": "ecb-fx-reference", "base": "EUR", "ecb_date": "2026-07-21",
+                 "rates": {"USD": "1.1418", "JPY": "185.82"},
+                 "artifact_sha256": "737bf201..."},
         "settlement": {"transaction": "0x...", "network": "base"},
+        "chainVerification": {"verdict": "SUCCESS", "block": 48943729},
         "proofOfMandate": {"remaining_cents": 9990000, "total_settled_cents": 10000,
                            "is_within_budget": True, "is_collateralized": True,
                            "audit_log_root_hash": "..."},
@@ -433,6 +451,9 @@ def main() -> None:
                   rate_per_min=rate_per_min, db_url=db_url)
     import dataclasses as _dc
     requirements_v2 = _dc.replace(requirements, resource=f"{public_url}/quote-v2")
+    requirements_vtx = _dc.replace(requirements, resource=f"{public_url}/verify-tx",
+                                   description="independent on-chain verification of a Base "
+                                               "USDC transfer (receipt + decoded Transfer)")
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):  # noqa: N802
@@ -440,7 +461,9 @@ def main() -> None:
                 status, body, extra = 200, op.health(), {}
             elif self.path == "/quote-v2":
                 xp = self.headers.get("X-PAYMENT")
-                if xp:  # a payment arrived -> settle via CDP (same money-path as /quote)
+                if xp and not ecb_available():   # SLA fail-closed: no charge for stale data
+                    status, body, extra = 503, {"error": "data temporarily unavailable"}, {}
+                elif xp:  # a payment arrived -> settle via CDP (records resource=/quote-v2)
                     status, body, extra = op.handle_payment(xp, requirements_v2)
                 else:
                     import base64 as _b64
@@ -472,6 +495,12 @@ def main() -> None:
                             "replay-proof, proof-carrying autonomous payments",
                     "network": op.requirements.network,
                     "price_minor_units": op.requirements.max_amount_required,
+                    "products": {
+                        "/quote": "ECB official FX reference rates (EUR base, ~30 currencies), "
+                                  "canonically hashed (artifact_sha256) — never charged when stale",
+                        "/verify-tx?tx=0x…": "independent on-chain verification of a Base USDC "
+                                             "transfer (receipt status + decoded Transfer log)",
+                    },
                     "pay": f"GET {public_url}/quote (returns 402 + accepts; pay via the "
                            "x402 exact scheme, e.g. pip install mandatehub)",
                     "health": f"{public_url}/healthz",
@@ -481,11 +510,25 @@ def main() -> None:
                     "bazaar": _bazaar_extension(public_url),
                 }
             elif self.path == "/quote":
-                status, body, extra = op.handle_payment(self.headers.get("X-PAYMENT"))
+                if not ecb_available():   # never charge for data we cannot serve (SLA fail-closed)
+                    status, body, extra = 503, {"error": "data temporarily unavailable"}, {}
+                else:
+                    status, body, extra = op.handle_payment(self.headers.get("X-PAYMENT"))
+            elif self.path.startswith("/verify-tx"):
+                from urllib.parse import parse_qs, urlparse
+                q = parse_qs(urlparse(self.path).query)
+                tx = (q.get("tx") or [""])[0]
+                if not (tx.startswith("0x") and len(tx) == 66):
+                    status, body, extra = 400, {"error": "pass ?tx=0x<64-hex> — a Base tx hash "
+                                                "whose USDC transfer you want verified"}, {}
+                else:
+                    status, body, extra = op.handle_payment(
+                        self.headers.get("X-PAYMENT"), requirements_vtx,
+                        resource_fn=lambda: verify_usdc_tx(tx))
             else:
                 status, body, extra = 404, {"error": "not found",
                                             "endpoints": ["/", "/healthz", "/metrics",
-                                                          "/quote", "/quote-v2"]}, {}
+                                                          "/quote", "/quote-v2", "/verify-tx"]}, {}
             data = json.dumps(body).encode()
             self.send_response(status)
             for k, v in extra.items():
