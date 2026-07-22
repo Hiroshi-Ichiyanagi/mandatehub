@@ -36,6 +36,9 @@ class Product:
     available: Callable[[], bool]
     build: Callable[[dict], dict]
     needs: str = ""  # human note on required query params, "" if none
+    # Optional CHEAP, NETWORK-FREE input check run BEFORE settlement. Returns None to proceed,
+    # or (http_code, body) to refuse for free (so a caller is not charged for invalid input).
+    precheck: Callable[[dict], "tuple[int, dict] | None"] | None = None
 
 
 def _canonical_hash(body: dict) -> str:
@@ -359,6 +362,220 @@ def verify_usdc_tx(tx_hash: str, *, rpc_url: str = "https://mainnet.base.org",
             "block": int(receipt["blockNumber"], 16), "usdc_transfers": transfers, "rpc": rpc_url}
 
 
+# ── block anchor + gas oracle (Base RPC) ──────────────────────────────────────────────
+
+BASE_RPC = "https://mainnet.base.org"
+
+
+def _latest_block(rpc_url: str = BASE_RPC) -> dict:
+    """Latest Base block header (number, hash, timestamp, baseFeePerGas, gasUsed, gasLimit)."""
+    b = _rpc(rpc_url, "eth_getBlockByNumber", ["latest", False])
+    if not b:
+        raise RuntimeError("no block from RPC")
+    return {
+        "number": int(b["number"], 16),
+        "hash": b["hash"],
+        "timestamp": int(b["timestamp"], 16),
+        "base_fee_per_gas": int(b.get("baseFeePerGas", "0x0"), 16),
+        "gas_used": int(b.get("gasUsed", "0x0"), 16),
+        "gas_limit": int(b.get("gasLimit", "0x1"), 16),
+    }
+
+
+def _next_base_fee(base_fee: int, gas_used: int, gas_limit: int) -> int:
+    """EIP-1559 next-block base fee — DETERMINISTIC from the current block, not a guess.
+    target = gas_limit/2; fee moves at most 1/8 per block toward filling/emptying."""
+    target = gas_limit // 2
+    if target == 0:
+        return base_fee
+    if gas_used == target:
+        return base_fee
+    if gas_used > target:
+        delta = max(1, base_fee * (gas_used - target) // target // 8)
+        return base_fee + delta
+    delta = base_fee * (target - gas_used) // target // 8
+    return base_fee - delta
+
+
+def gas_oracle(params: dict, *, rpc_url: str = BASE_RPC) -> dict:
+    """Base gas conditions + a transparent, reproducible next-block estimate.
+
+    The next base fee is the EXACT EIP-1559 computation from the current block (verifiable, not
+    a forecast). The 'suggested' priority fees are a disclosed heuristic over the current base
+    fee. This is operational cost data — NOT financial advice; the caller decides when to send."""
+    blk = _latest_block(rpc_url)
+    nxt = _next_base_fee(blk["base_fee_per_gas"], blk["gas_used"], blk["gas_limit"])
+    congestion = round(blk["gas_used"] / blk["gas_limit"], 4) if blk["gas_limit"] else None
+    gwei = lambda w: round(w / 1e9, 4)  # noqa: E731
+    # priority-fee tiers: disclosed heuristic anchored to the (small) Base priority market
+    tiers = {"economy_gwei": 0.001, "standard_gwei": 0.005, "fast_gwei": 0.02}
+    body = {
+        "product": "base-gas-oracle",
+        "as_of_block": blk["number"],
+        "block_hash": blk["hash"],
+        "block_timestamp": blk["timestamp"],
+        "network": "base-mainnet",
+        "observed": {
+            "base_fee_gwei": gwei(blk["base_fee_per_gas"]),
+            "gas_used": blk["gas_used"], "gas_limit": blk["gas_limit"],
+            "congestion_ratio": congestion,
+        },
+        "estimate_next_block": {
+            "base_fee_gwei": gwei(nxt),
+            "method": "eip1559-deterministic",
+            "note": "exact EIP-1559 base-fee update from this block; reproducible on-chain",
+        },
+        "suggested_priority_fee": {**tiers,
+            "method": "disclosed-heuristic",
+            "max_fee_fast_gwei": gwei(nxt) + tiers["fast_gwei"]},
+        "disclaimer": "operational gas estimate, not financial advice; you decide when to send",
+    }
+    body["artifact_sha256"] = _canonical_hash(body)
+    return body
+
+
+def _gas_available(rpc_url: str = BASE_RPC) -> bool:
+    try:
+        _latest_block(rpc_url)
+        return True
+    except Exception:
+        return False
+
+
+# ── CVE snapshot (OSV.dev — point-in-time, hash-pinned) ────────────────────────────────
+
+OSV_URL = "https://api.osv.dev/v1/query"
+_CVE_ECOSYSTEMS = {"PyPI", "npm", "Go", "crates.io", "Maven", "RubyGems", "NuGet", "Packagist"}
+
+
+def cve_snapshot(params: dict) -> dict:
+    """A point-in-time, hash-pinned snapshot of OSV.dev advisories for one package.
+
+    Params: ?ecosystem=PyPI&package=requests[&version=2.31.0]. We attest 'this is what OSV
+    returned at this time', hash-pinned — NOT a completeness or safety judgment of our own."""
+    eco = (params.get("ecosystem") or "").strip()
+    pkg = (params.get("package") or "").strip()
+    ver = (params.get("version") or "").strip()
+    if eco not in _CVE_ECOSYSTEMS:
+        return {"product": "cve-snapshot", "error": f"ecosystem must be one of {sorted(_CVE_ECOSYSTEMS)}"}
+    if not pkg or len(pkg) > 200:
+        return {"product": "cve-snapshot", "error": "pass ?package=<name> (<=200 chars)"}
+    query: dict = {"package": {"name": pkg, "ecosystem": eco}}
+    if ver:
+        query["version"] = ver
+    payload = json.dumps(query).encode()
+    req = urllib.request.Request(OSV_URL, data=payload,
+                                 headers={**_UA, "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        data = json.load(r)
+    vulns = data.get("vulns") or []
+    ids = sorted(v.get("id", "") for v in vulns)
+    summaries = [{"id": v.get("id"), "summary": (v.get("summary") or "")[:200],
+                  "modified": v.get("modified"),
+                  "aliases": sorted(v.get("aliases") or [])[:8],
+                  "severity": v.get("severity") or []} for v in vulns]
+    summaries.sort(key=lambda x: x["id"] or "")
+    body = {
+        "product": "cve-snapshot",
+        "source": "osv.dev",
+        "query": {"ecosystem": eco, "package": pkg, "version": ver or None},
+        "vulnerability_count": len(ids),
+        "vulnerability_ids": ids,
+        "advisories": summaries,
+        "attestation": "hash-pinned snapshot of OSV.dev's response; not our own completeness "
+                       "or safety judgment",
+    }
+    body["artifact_sha256"] = _canonical_hash(body)
+    return body
+
+
+def _osv_available() -> bool:
+    try:
+        with urllib.request.urlopen(urllib.request.Request(
+                "https://api.osv.dev/", headers=_UA), timeout=8) as r:
+            return r.status < 500
+    except Exception:
+        return False
+
+
+# ── URL liveness / tamper monitor + content-existence attestation (SSRF-guarded) ───────
+
+def url_precheck(params: dict) -> "tuple[int, dict] | None":
+    """CHEAP, NETWORK-FREE format check run before settlement. Full SSRF validation (DNS + the
+    real peer IP) happens later in netfetch.safe_fetch; this only rejects obviously-bad input
+    for free so a caller is never charged for a malformed request."""
+    from urllib.parse import urlsplit
+    url = (params.get("url") or "").strip()
+    if not url:
+        return 400, {"error": "pass ?url=https://… (http/https, public host only)"}
+    if len(url) > 2048:
+        return 400, {"error": "url too long (<=2048 chars)"}
+    p = urlsplit(url)
+    if p.scheme.lower() not in ("http", "https") or not p.hostname:
+        return 400, {"error": "url must be an absolute http(s) URL with a host"}
+    return None
+
+
+def url_check(params: dict) -> dict:
+    """Liveness + tamper report for a caller-supplied URL: current status code and a sha256 of
+    the body, so an agent can health-check / detect drift before depending on the resource.
+    Charged for performing the check — 'unreachable' is a valid result. Malformed input is
+    refused for free by url_precheck; an unsafe (non-public) target is refused here safely."""
+    from netfetch import safe_fetch, FetchError
+    try:
+        r = safe_fetch((params.get("url") or "").strip())
+    except FetchError as e:
+        return {"product": "url-liveness", "refused": True, "reason": str(e)}
+    body = {
+        "product": "url-liveness",
+        "url": r["url"], "host": r.get("host"),
+        "status_code": r.get("status"),
+        "reachable": r.get("status") is not None,
+        "reason": r.get("reason"),
+        "content_sha256": r.get("body_sha256"),
+        "content_bytes": r.get("body_bytes"),
+        "content_type": r.get("headers", {}).get("content-type"),
+        "location": r.get("headers", {}).get("location"),
+        "truncated": r.get("truncated", False),
+        "note": "status + content hash as observed now; redirects are reported, not followed",
+    }
+    body["artifact_sha256"] = _canonical_hash(body)
+    return body
+
+
+def content_attestation(params: dict, *, rpc_url: str = BASE_RPC) -> dict:
+    """Prove 'this content was observed at this time': fetch the URL, hash its bytes, and anchor
+    to the latest Base block (block.timestamp = trustable on-chain time). Attests EXISTENCE /
+    integrity of the observed bytes — NOT that the content is true. `attested` is true only for a
+    2xx target. The block anchor requires RPC (gated by availability -> 503 before charge)."""
+    from netfetch import safe_fetch, FetchError
+    anchor = _latest_block(rpc_url)     # available() gated this; defensive if RPC blips
+    try:
+        r = safe_fetch((params.get("url") or "").strip())
+    except FetchError as e:
+        return {"product": "content-attestation", "refused": True, "reason": str(e)}
+    status = r.get("status")
+    attested = status is not None and 200 <= status < 300
+    body = {
+        "product": "content-attestation",
+        "url": r["url"], "host": r.get("host"),
+        "observed_status": status,
+        "attested": attested,
+        "content_sha256": r.get("body_sha256"),
+        "content_bytes": r.get("body_bytes"),
+        "content_type": r.get("headers", {}).get("content-type"),
+        "truncated": r.get("truncated", False),
+        "anchor": {"chain": "base-mainnet", "block_number": anchor["number"],
+                   "block_hash": anchor["hash"], "block_timestamp": anchor["timestamp"]},
+        "attestation": ("operator observed the above content bytes at/around this Base block; "
+                        "attests existence & integrity of the bytes, NOT their truthfulness"
+                        if attested else
+                        "target was not 2xx; recorded observed status but no content is attested"),
+    }
+    body["artifact_sha256"] = _canonical_hash(body)
+    return body
+
+
 # ── the catalog ─────────────────────────────────────────────────────────────────────
 
 CATALOG: dict[str, Product] = {
@@ -391,6 +608,23 @@ CATALOG: dict[str, Product] = {
         "Kairos Convergence Scores for ~2000 JP equities (multi-pillar tailwind convergence; "
         "static research snapshot with explicit as-of; not advice).",
         _kairos_available, kairos_scores, "?top=1..300"),
+    "cve-snapshot": Product(
+        "Point-in-time, hash-pinned snapshot of OSV.dev advisories for a package — a trustworthy "
+        "reference source for AI code audits (attests OSV's response, not our own judgment).",
+        _osv_available, cve_snapshot, "?ecosystem=PyPI&package=<name>&version=<optional>"),
+    "gas-oracle": Product(
+        "Base gas conditions + a reproducible next-block base-fee estimate (exact EIP-1559) and "
+        "disclosed priority-fee tiers, anchored to the current block. Operational data, not advice.",
+        _gas_available, gas_oracle, ""),
+    "url-liveness": Product(
+        "Liveness + tamper report for a URL: current status code and a sha256 of the body, so an "
+        "agent can health-check / detect drift before depending on an external resource.",
+        lambda: True, url_check, "?url=https://<public-host>/...", precheck=url_precheck),
+    "content-attestation": Product(
+        "Content-existence attestation: fetch a URL, hash its bytes, and anchor to the current "
+        "Base block (on-chain time). Proves the content was observed at that time — not that it "
+        "is true. `attested` is true only for a 2xx target.",
+        _gas_available, content_attestation, "?url=https://<public-host>/...", precheck=url_precheck),
 }
 
 

@@ -298,7 +298,7 @@ def test_wave2_products_pyverify_openunit_kairos():
     sys.path.insert(0, str(DEPLOY))
     import products as P
     cs = P.catalog_summary()
-    assert set(cs) == {"fx", "qswap", "audit-verify", "verify-tx",
+    assert set(cs) >= {"fx", "qswap", "audit-verify", "verify-tx",
                        "govern-verify", "openunit", "kairos"}
     # govern-verify (pure Python): genuine passes, tampered fails with the Ed25519 code
     assert P.govern_verify({"bundle": "genuine"})["exit_code"] == 0
