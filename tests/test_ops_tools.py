@@ -461,3 +461,33 @@ def test_mcp_server_tools_and_preview_parsing(monkeypatch):
     # purchase() with no key refuses BEFORE any network call
     monkeypatch.delenv("MANDATEHUB_AGENT_PRIVATE_KEY", raising=False)
     assert "not set" in mod.purchase("/quote")["error"]
+
+
+def test_agent_tools_client_offline(monkeypatch):
+    """examples/agent_tools.py MandatehubClient parses discover/preview and refuses purchase
+    without a key — all offline (network stubbed). Framework adapters are optional."""
+    import importlib.util
+    path = REPO / "examples" / "agent_tools.py"
+    spec = importlib.util.spec_from_file_location("mh_agent_tools", path)
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+
+    c = mod.MandatehubClient(base_url="https://x.example", private_key=None)
+
+    # discover() returns the catalog body
+    monkeypatch.setattr(c, "_get", lambda p, headers=None: (200, {"service": "mandatehub",
+                                                                   "products": [{"id": "quote"}]}))
+    assert c.discover()["service"] == "mandatehub"
+
+    # preview() parses a 402 challenge (no spend)
+    challenge = {"accepts": [{"network": "base", "maxAmountRequired": "10000",
+                              "asset": "0xUSDC", "payTo": "0xME"}]}
+    monkeypatch.setattr(c, "_get", lambda p, headers=None: (402, challenge))
+    pv = c.preview("/quote")
+    assert pv["price_minor_units"] == "10000" and pv["network"] == "base" and pv["pay_to"] == "0xME"
+
+    # 503 surfaces as not-charged, never an exception
+    monkeypatch.setattr(c, "_get", lambda p, headers=None: (503, {"error": "stale"}))
+    assert c.preview("/quote")["status"] == 503
+
+    # purchase() with no key refuses before any network/library work
+    assert "no private key" in c.purchase("/quote")["error"]
