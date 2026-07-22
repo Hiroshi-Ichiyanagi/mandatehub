@@ -434,12 +434,26 @@ def gas_oracle(params: dict, *, rpc_url: str = BASE_RPC) -> dict:
     return body
 
 
-def _gas_available(rpc_url: str = BASE_RPC) -> bool:
+_avail_cache: dict = {}
+AVAIL_TTL_SECONDS = 120   # same spirit as ECB_RETRY_BACKOFF: unpaid catalog renders must not
+                          # be able to amplify into repeated outbound probes (OSV / RPC)
+
+
+def _cached_avail(key: str, probe: Callable[[], bool], now: float | None = None) -> bool:
+    t = time.time() if now is None else now
+    hit = _avail_cache.get(key)
+    if hit is not None and t - hit[1] < AVAIL_TTL_SECONDS:
+        return hit[0]
     try:
-        _latest_block(rpc_url)
-        return True
+        val = bool(probe())
     except Exception:
-        return False
+        val = False
+    _avail_cache[key] = (val, t)
+    return val
+
+
+def _gas_available(rpc_url: str = BASE_RPC) -> bool:
+    return _cached_avail("gas", lambda: _latest_block(rpc_url) is not None)
 
 
 # ── CVE snapshot (OSV.dev — point-in-time, hash-pinned) ────────────────────────────────
@@ -460,6 +474,8 @@ def cve_snapshot(params: dict) -> dict:
         return {"product": "cve-snapshot", "error": f"ecosystem must be one of {sorted(_CVE_ECOSYSTEMS)}"}
     if not pkg or len(pkg) > 200:
         return {"product": "cve-snapshot", "error": "pass ?package=<name> (<=200 chars)"}
+    if len(ver) > 100:
+        return {"product": "cve-snapshot", "error": "version too long (<=100 chars)"}
     query: dict = {"package": {"name": pkg, "ecosystem": eco}}
     if ver:
         query["version"] = ver
@@ -489,13 +505,14 @@ def cve_snapshot(params: dict) -> dict:
     return body
 
 
+def _osv_probe() -> bool:
+    with urllib.request.urlopen(urllib.request.Request(
+            "https://api.osv.dev/", headers=_UA), timeout=8) as r:
+        return r.status < 500
+
+
 def _osv_available() -> bool:
-    try:
-        with urllib.request.urlopen(urllib.request.Request(
-                "https://api.osv.dev/", headers=_UA), timeout=8) as r:
-            return r.status < 500
-    except Exception:
-        return False
+    return _cached_avail("osv", _osv_probe)
 
 
 # ── URL liveness / tamper monitor + content-existence attestation (SSRF-guarded) ───────
@@ -619,12 +636,12 @@ CATALOG: dict[str, Product] = {
     "url-liveness": Product(
         "Liveness + tamper report for a URL: current status code and a sha256 of the body, so an "
         "agent can health-check / detect drift before depending on an external resource.",
-        lambda: True, url_check, "?url=https://<public-host>/...", precheck=url_precheck),
+        lambda: True, url_check, "?url=<percent-encoded https URL, public host>", precheck=url_precheck),
     "content-attestation": Product(
         "Content-existence attestation: fetch a URL, hash its bytes, and anchor to the current "
         "Base block (on-chain time). Proves the content was observed at that time — not that it "
         "is true. `attested` is true only for a 2xx target.",
-        _gas_available, content_attestation, "?url=https://<public-host>/...", precheck=url_precheck),
+        _gas_available, content_attestation, "?url=<percent-encoded https URL, public host>", precheck=url_precheck),
 }
 
 

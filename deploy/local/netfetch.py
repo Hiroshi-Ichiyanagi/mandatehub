@@ -55,6 +55,11 @@ def safe_fetch(url: str, *, method: str = "GET", max_bytes: int = MAX_BYTES,
     if not host:
         raise FetchError("URL has no host")
     port = parts.port or (443 if scheme == "https" else 80)
+    # Don't let customers use us to probe privileged services (SSH/SMTP/DB…) on third-party
+    # hosts: privileged ports other than the web defaults are refused. High ports stay allowed
+    # (that's where real APIs live).
+    if port < 1024 and port not in (80, 443):
+        raise FetchError(f"privileged port {port} not allowed (only 80/443 below 1024)")
     path = parts.path or "/"
     if parts.query:
         path += "?" + parts.query

@@ -117,6 +117,46 @@ def test_url_products_precheck_and_attestation(monkeypatch):
     assert P.content_attestation({"url": "https://x"})["refused"] is True
 
 
+def test_availability_probes_are_cached(monkeypatch):
+    """Unpaid catalog renders (/, agents.json) call available() per product — those probes must
+    NOT amplify into repeated outbound OSV/RPC requests. One probe per TTL window, pass or fail."""
+    P, _ = _load(monkeypatch)
+    calls = {"gas": 0, "osv": 0}
+
+    monkeypatch.setattr(P, "_latest_block", lambda rpc=None: calls.__setitem__("gas", calls["gas"] + 1) or {"number": 1})
+    monkeypatch.setattr(P, "_osv_probe", lambda: calls.__setitem__("osv", calls["osv"] + 1) or True)
+    P._avail_cache.clear()
+    for _ in range(10):
+        assert P._gas_available() is True
+        assert P._osv_available() is True
+    assert calls == {"gas": 1, "osv": 1}          # cached within TTL
+
+    # failures are negative-cached too (no hammering a down dependency)
+    P._avail_cache.clear()
+    def boom(*a, **k):
+        calls["gas"] += 1
+        raise RuntimeError("down")
+    monkeypatch.setattr(P, "_latest_block", boom)
+    calls["gas"] = 0
+    for _ in range(10):
+        assert P._gas_available() is False
+    assert calls["gas"] == 1
+
+
+def test_netfetch_privileged_ports_and_cve_version_cap(monkeypatch):
+    """Privileged ports other than 80/443 are refused (no probing SSH/SMTP/DBs via us);
+    cve-snapshot caps the version length."""
+    P, netfetch = _load(monkeypatch)
+    for u in ("http://example.com:22/", "https://example.com:25/", "http://example.com:993/"):
+        try:
+            netfetch.safe_fetch(u, timeout=3)
+            raise AssertionError(f"privileged port allowed: {u}")
+        except netfetch.FetchError as e:
+            assert "privileged port" in str(e)
+    assert "version too long" in P.cve_snapshot(
+        {"ecosystem": "PyPI", "package": "x", "version": "v" * 101})["error"]
+
+
 def test_catalog_wave3_registered(monkeypatch):
     """The four new products are registered with the right gates and prechecks."""
     P, _ = _load(monkeypatch)
