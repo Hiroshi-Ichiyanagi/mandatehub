@@ -73,6 +73,7 @@ log = logging.getLogger("mandatehub.operator")
 # real sellable products (ECB FX reference + on-chain tx verification)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from products import CATALOG, catalog_summary, ecb_available, ecb_quote, verify_usdc_tx  # noqa: E402
+from discovery import agents_catalog, ai_plugin, openapi_spec  # noqa: E402
 
 
 def _require(key: str) -> str:
@@ -551,6 +552,17 @@ def main() -> None:
                     status, body, extra = op.handle_payment(
                         self.headers.get("X-PAYMENT"), product_reqs[name],
                         resource_fn=lambda pr=prod, pa=params: pr.build(pa))
+            elif self.path == "/.well-known/ai-plugin.json":
+                status, extra = 200, {}
+                body = ai_plugin(public_url)
+            elif self.path == "/.well-known/agents.json":
+                status, extra = 200, {}
+                body = agents_catalog(public_url, op.requirements.max_amount_required,
+                                      op.requirements.network, CATALOG)
+            elif self.path == "/openapi.json":
+                status, extra = 200, {}
+                body = openapi_spec(public_url, op.requirements.max_amount_required,
+                                    op.requirements.network, CATALOG)
             elif self.path.startswith("/verify-tx"):
                 from urllib.parse import parse_qs, urlparse
                 q = parse_qs(urlparse(self.path).query)
@@ -565,7 +577,9 @@ def main() -> None:
             else:
                 status, body, extra = 404, {"error": "not found",
                                             "endpoints": ["/", "/healthz", "/metrics",
-                                                          "/quote", "/quote-v2", "/verify-tx", "/product/<name>"]}, {}
+                                                          "/quote", "/quote-v2", "/verify-tx", "/product/<name>",
+                                                          "/openapi.json", "/.well-known/ai-plugin.json",
+                                                          "/.well-known/agents.json"]}, {}
             data = json.dumps(body).encode()
             self.send_response(status)
             for k, v in extra.items():

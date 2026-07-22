@@ -359,3 +359,60 @@ def test_security_review_fixes():
     assert "too large" in P.govern_verify({"data": base64.b64encode(buf.getvalue()).decode()})["error"]
     # detail path redaction
     assert "/" not in P._last_line_safe("fail at /private/var/T/mh-bundle-x/manifest.json").split("manifest")[0][-3:]
+
+
+def test_discovery_machine_interface(monkeypatch):
+    """discovery.py generates valid ai-plugin / agents.json / openapi from the live catalog,
+    all JSON-serializable, and never drifts from products.CATALOG."""
+    monkeypatch.syspath_prepend(str(DEPLOY))
+    import importlib
+    import products
+    importlib.reload(products)
+    import discovery
+    importlib.reload(discovery)
+
+    pu = "https://mandatehub.obolpay.xyz"
+    CAT = products.CATALOG
+
+    plugin = discovery.ai_plugin(pu)
+    assert json.dumps(plugin)                         # serializable
+    assert plugin["schema_version"] == "v1"
+    assert plugin["api"]["url"] == f"{pu}/openapi.json"
+    assert plugin["auth"]["type"] == "none"           # payment is per-request, no API key
+
+    cat = discovery.agents_catalog(pu, "10000", "base", CAT)
+    assert json.dumps(cat)
+    ids = {p["id"] for p in cat["products"]}
+    assert "quote" in ids                             # the default ECB product is listed
+    assert set(CAT) <= ids                            # every catalog product surfaces
+    assert cat["payment"]["protocol"] == "x402"
+    assert cat["payment"]["price_minor_units"] == "10000"
+    assert cat["openapi"] == f"{pu}/openapi.json"
+
+    spec = discovery.openapi_spec(pu, "10000", "base", CAT)
+    assert json.dumps(spec)
+    assert spec["openapi"].startswith("3.1")
+    assert spec["servers"][0]["url"] == pu
+    assert "/quote" in spec["paths"]
+    for name in CAT:
+        node = spec["paths"][f"/product/{name}"]["get"]
+        assert node["x-402-payment"]["network"] == "base"
+        assert set(node["responses"]) >= {"200", "402", "503"}
+
+
+def test_discovery_routes_served_free(tmp_path, monkeypatch):
+    """The three discovery routes are wired into the operator and return 200 JSON unpaid."""
+    import importlib.util
+    data = tmp_path / "data"; data.mkdir()
+    _make_operator_state(data)
+    monkeypatch.syspath_prepend(str(DEPLOY))
+    spec = importlib.util.spec_from_file_location("operator", DEPLOY / "operator.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    # the operator imported the discovery helpers at module load
+    assert hasattr(mod, "ai_plugin") and hasattr(mod, "agents_catalog") and hasattr(mod, "openapi_spec")
+    # and the route source dispatches the three unpaid paths
+    src = (DEPLOY / "operator.py").read_text()
+    for route in ("/.well-known/ai-plugin.json", "/.well-known/agents.json", "/openapi.json"):
+        assert route in src
