@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="mandatehub logo">
+  <rect width="128" height="128" rx="24" fill="#0f172a"/>
+  <circle cx="64" cy="52" r="26" fill="none" stroke="#38bdf8" stroke-width="6"/>
+  <path d="M52 52h24M64 40v24" stroke="#38bdf8" stroke-width="6" stroke-linecap="round"/>
+  <text x="64" y="106" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="700" fill="#e2e8f0">402</text>
+</svg>
