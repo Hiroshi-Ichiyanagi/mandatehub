@@ -506,9 +506,14 @@ def cve_snapshot(params: dict) -> dict:
 
 
 def _osv_probe() -> bool:
-    with urllib.request.urlopen(urllib.request.Request(
-            "https://api.osv.dev/", headers=_UA), timeout=8) as r:
-        return r.status < 500
+    from urllib.error import HTTPError
+    try:
+        with urllib.request.urlopen(urllib.request.Request(
+                "https://api.osv.dev/", headers=_UA), timeout=8) as r:
+            return r.status < 500
+    except HTTPError as e:
+        # The API root answers 404 — a 4xx still proves the host is up and serving.
+        return e.code < 500
 
 
 def _osv_available() -> bool:
