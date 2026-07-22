@@ -143,6 +143,24 @@ def test_availability_probes_are_cached(monkeypatch):
     assert calls["gas"] == 1
 
 
+def test_osv_probe_treats_4xx_as_reachable(monkeypatch):
+    """api.osv.dev answers 404 on its root; urllib raises HTTPError on 4xx. The probe must read
+    that as 'host up' (found live: cve-snapshot was 503 on the VPS because of this)."""
+    P, _ = _load(monkeypatch)
+    import urllib.request
+    from urllib.error import HTTPError
+
+    def raise_404(req, timeout=0):
+        raise HTTPError("https://api.osv.dev/", 404, "Not Found", {}, io.BytesIO(b""))
+    monkeypatch.setattr(urllib.request, "urlopen", raise_404)
+    assert P._osv_probe() is True
+
+    def raise_503(req, timeout=0):
+        raise HTTPError("https://api.osv.dev/", 503, "Unavailable", {}, io.BytesIO(b""))
+    monkeypatch.setattr(urllib.request, "urlopen", raise_503)
+    assert P._osv_probe() is False
+
+
 def test_netfetch_privileged_ports_and_cve_version_cap(monkeypatch):
     """Privileged ports other than 80/443 are refused (no probing SSH/SMTP/DBs via us);
     cve-snapshot caps the version length."""
