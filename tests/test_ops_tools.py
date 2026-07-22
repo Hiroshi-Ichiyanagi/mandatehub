@@ -213,3 +213,47 @@ def test_rate_limit_enforced_and_survives_restart(tmp_path, monkeypatch):
         payee_account_id=pay, amount=Money(10000, USDC), purpose="API_CALL",
         at=now + timedelta(seconds=120))
     assert ok, reason
+
+
+def test_products_ecb_parse_cache_and_gate(monkeypatch):
+    import importlib
+    sys.path.insert(0, str(DEPLOY))
+    import products
+    importlib.reload(products)
+    FIXTURE = b"""<?xml version="1.0" encoding="UTF-8"?>
+<gesmes:Envelope xmlns:gesmes="http://www.gesmes.org/xml/2002-08-01"
+ xmlns="http://www.ecb.int/vocabulary/2002-08-01/eurofxref">
+ <Cube><Cube time="2026-07-21">
+  <Cube currency="USD" rate="1.1418"/><Cube currency="JPY" rate="185.82"/>
+ </Cube></Cube></gesmes:Envelope>"""
+    parsed = products._parse_ecb(FIXTURE)
+    assert parsed == {"date": "2026-07-21", "rates": {"JPY": "185.82", "USD": "1.1418"}}
+
+    # inject fetch: first works, later fails -> cache serves, then stale gate closes
+    calls = {"n": 0}
+    def fake_fetch():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return parsed
+        raise RuntimeError("ecb down")
+    monkeypatch.setattr(products, "_fetch_ecb", fake_fetch)
+    products._cache.update({"at": 0.0, "data": None})
+    q = products.ecb_quote(now=1000.0)
+    assert q["ecb_date"] == "2026-07-21" and "artifact_sha256" in q
+    # within TTL: cache, no refetch
+    assert products.ecb_quote(now=1100.0)["rates"]["USD"] == "1.1418"
+    assert calls["n"] == 1
+    # after TTL with ECB down: still serves cached (grace)
+    assert products.ecb_quote(now=1000.0 + products.ECB_TTL_SECONDS + 5) is not None
+    # beyond MAX_AGE with ECB down: fail-closed -> None (never charge)
+    assert products.ecb_quote(now=1000.0 + products.ECB_MAX_AGE_SECONDS + 5) is None
+
+
+def test_products_verify_tx_offline_paths():
+    sys.path.insert(0, str(DEPLOY))
+    from products import verify_usdc_tx
+    assert verify_usdc_tx("nope")["verdict"] == "INVALID_HASH"
+    assert verify_usdc_tx("0x" + "a" * 63)["verdict"] == "INVALID_HASH"
+    # RPC unreachable -> stated, not raised
+    v = verify_usdc_tx("0x" + "a" * 64, rpc_url="https://127.0.0.1:1")
+    assert v["verdict"] == "RPC_UNAVAILABLE"

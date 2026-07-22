@@ -64,6 +64,18 @@ APIs may change while the project is pre-1.0.
   HTTP 400 **with** a regular result body (the adapter now parses result envelopes on
   non-2xx instead of raising); self-send is rejected.
 
+### Added
+- **Real products (the shop now sells real goods).** `/quote` serves the **ECB official FX
+  reference rates** (EUR base, ~30 currencies, 15-min cache) with a canonical
+  `artifact_sha256` — and a freshness SLA: stale/absent data returns 503 **before** any
+  settlement (never charge for what can't be served). New paid endpoint **`/verify-tx?tx=…`**:
+  independent on-chain verification of a Base USDC transfer (receipt status + decoded
+  Transfer log). Both stdlib-only (`deploy/local/products.py`).
+- **On-chain settlement confirmation (THREAT_MODEL gap #5 closed)** — after every mainnet
+  settle the operator reads the tx receipt itself and returns `chainVerification` in the paid
+  response; a `REVERTED` receipt logs a critical divergence. Best-effort: RPC outages never
+  block the money path.
+
 ### Fixed
 - **Claim coverage completed** — `settle_batch` and `settle_via_auction` now take the same
   atomic storage-layer claim as `settle_intent` (batch: all intents claimed after
