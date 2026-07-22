@@ -379,6 +379,9 @@ def test_discovery_machine_interface(monkeypatch):
     assert plugin["schema_version"] == "v1"
     assert plugin["api"]["url"] == f"{pu}/openapi.json"
     assert plugin["auth"]["type"] == "none"           # payment is per-request, no API key
+    # logo_url must point at an actual image (the manifest field is an image URL, not a page)
+    assert plugin["logo_url"].endswith((".svg", ".png", ".ico"))
+    assert (REPO / "site" / plugin["logo_url"].rsplit("/", 1)[1]).exists()
 
     cat = discovery.agents_catalog(pu, "10000", "base", CAT)
     assert json.dumps(cat)

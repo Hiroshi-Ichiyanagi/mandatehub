@@ -87,7 +87,7 @@ def ai_plugin(public_url: str) -> dict[str, Any]:
         "auth": {"type": "none",
                  "note": "no API key; payment is per-request via the x402 exact scheme"},
         "api": {"type": "openapi", "url": f"{public_url}/openapi.json"},
-        "logo_url": "https://mandatehub.ichiyanagi1111.workers.dev/",
+        "logo_url": "https://mandatehub.ichiyanagi1111.workers.dev/logo.svg",
         "contact_email": "",
         "legal_info_url":
             "https://github.com/Hiroshi-Ichiyanagi/mandatehub/blob/main/ROADMAP.md",
