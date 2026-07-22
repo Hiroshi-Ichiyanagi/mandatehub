@@ -234,6 +234,8 @@ product and **not** novel cryptography — it is a clean assembly of standard pr
 
 ## Project
 
+- **[Overview (日本語)](docs/OVERVIEW.md)** — システム全体の説明＋商品カタログ（8系統）
+
 - [Site](https://mandatehub.ichiyanagi1111.workers.dev) — the landing page (Cloudflare, auto-deployed from [`site/`](site/) on push to `main`)
 - [Architecture](docs/ARCHITECTURE.md) · [Intent mandates](docs/INTENT_MANDATES.md) · [Best execution & recapture](docs/EXECUTION_RECAPTURE.md) · [x402 compatibility & roadmap](docs/X402.md) · [`mandate` model spec](specs/mandate.md) · [`best-exec` scheme spec](specs/best-exec.md)
 - [Roadmap](ROADMAP.md) — the public-release + protocol tracks, and the hard gates before mainnet
