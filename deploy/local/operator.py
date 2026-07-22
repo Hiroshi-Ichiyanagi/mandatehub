@@ -172,6 +172,7 @@ class Operator:
     # -- request handling -----------------------------------------------------------
     def health(self) -> dict:
         at = _now()
+        from products import attest_signer_address
         return {
             "ok": True,
             "mandate": self.mandate_id,
@@ -179,6 +180,9 @@ class Operator:
             "settled_this_process": self.settled_count,
             "denied_this_process": self.denied_count,
             "audit_root": self.audit.latest_hash(),
+            # canonical signer of content-attestation `operator_signature` (None if unsigned);
+            # verifiers ecrecover the attestation and check it equals this address.
+            "attestation_signer": attest_signer_address(),
         }
 
     def handle_payment(self, x_payment: str | None, requirements=None,

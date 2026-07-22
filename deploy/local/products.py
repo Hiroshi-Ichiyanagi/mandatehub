@@ -397,18 +397,40 @@ def _next_base_fee(base_fee: int, gas_used: int, gas_limit: int) -> int:
     return base_fee - delta
 
 
+GAS_FEE_HISTORY_BLOCKS = 20   # trailing window for the priority-fee percentiles
+
+
+def _priority_fee_percentiles(rpc_url: str, blocks: int = GAS_FEE_HISTORY_BLOCKS
+                              ) -> "dict | None":
+    """Real priority-fee tiers from eth_feeHistory: the p10/p50/p90 of miner tips actually paid
+    over the trailing window (observed data, reproducible from the block range — not a guess)."""
+    fh = _rpc(rpc_url, "eth_feeHistory", [hex(blocks), "latest", [10, 50, 90]])
+    if not fh or not fh.get("reward"):
+        return None
+    rows = [[int(x, 16) for x in r] for r in fh["reward"] if r and len(r) == 3]
+    if not rows:
+        return None
+    n = len(rows)
+    avg = [sum(col) / n for col in zip(*rows)]   # mean of each percentile column, in wei
+    gwei = lambda w: round(w / 1e9, 4)           # noqa: E731
+    return {"economy_gwei": gwei(avg[0]), "standard_gwei": gwei(avg[1]),
+            "fast_gwei": gwei(avg[2]), "method": "eth_feeHistory p10/p50/p90",
+            "window_blocks": n}
+
+
 def gas_oracle(params: dict, *, rpc_url: str = BASE_RPC) -> dict:
     """Base gas conditions + a transparent, reproducible next-block estimate.
 
     The next base fee is the EXACT EIP-1559 computation from the current block (verifiable, not
-    a forecast). The 'suggested' priority fees are a disclosed heuristic over the current base
-    fee. This is operational cost data — NOT financial advice; the caller decides when to send."""
+    a forecast). The priority-fee tiers are the observed p10/p50/p90 tips actually paid over the
+    trailing window (eth_feeHistory). Operational cost data — NOT financial advice; you decide."""
     blk = _latest_block(rpc_url)
     nxt = _next_base_fee(blk["base_fee_per_gas"], blk["gas_used"], blk["gas_limit"])
     congestion = round(blk["gas_used"] / blk["gas_limit"], 4) if blk["gas_limit"] else None
     gwei = lambda w: round(w / 1e9, 4)  # noqa: E731
-    # priority-fee tiers: disclosed heuristic anchored to the (small) Base priority market
-    tiers = {"economy_gwei": 0.001, "standard_gwei": 0.005, "fast_gwei": 0.02}
+    prio = _priority_fee_percentiles(rpc_url) or {
+        "method": "unavailable", "note": "eth_feeHistory returned no data this call"}
+    fast = prio.get("fast_gwei", 0.0)
     body = {
         "product": "base-gas-oracle",
         "as_of_block": blk["number"],
@@ -425,9 +447,7 @@ def gas_oracle(params: dict, *, rpc_url: str = BASE_RPC) -> dict:
             "method": "eip1559-deterministic",
             "note": "exact EIP-1559 base-fee update from this block; reproducible on-chain",
         },
-        "suggested_priority_fee": {**tiers,
-            "method": "disclosed-heuristic",
-            "max_fee_fast_gwei": gwei(nxt) + tiers["fast_gwei"]},
+        "suggested_priority_fee": {**prio, "max_fee_fast_gwei": round(gwei(nxt) + fast, 4)},
         "disclaimer": "operational gas estimate, not financial advice; you decide when to send",
     }
     body["artifact_sha256"] = _canonical_hash(body)
@@ -520,6 +540,56 @@ def _osv_available() -> bool:
     return _cached_avail("osv", _osv_probe)
 
 
+# ── operator attestation signing (secp256k1 / EIP-191, publicly verifiable) ────────────
+
+import os  # noqa: E402
+
+_attest_cache: dict = {}
+
+
+def attest_signer_address() -> "str | None":
+    """The Ethereum address whose EIP-191 signature vouches for our attestations, or None if no
+    signing key is configured. Published (e.g. in /healthz) so anyone can verify offline."""
+    s = _attest_signer()
+    return s["address"] if s else None
+
+
+def _attest_signer() -> "dict | None":
+    """Lazily load the operator's attestation key (MANDATEHUB_ATTEST_KEY_FILE). Degrades to None
+    (unsigned attestations) when the key or eth-account is absent — never breaks the money path."""
+    if "signer" in _attest_cache:
+        return _attest_cache["signer"]
+    path = os.environ.get("MANDATEHUB_ATTEST_KEY_FILE")
+    signer = None
+    if path and Path(path).exists():
+        try:
+            from eth_account import Account   # operator-side dep; not needed for stdlib tests
+            key = Path(path).read_text().strip()
+            acct = Account.from_key(key)
+            signer = {"address": acct.address, "key": key}
+        except Exception:
+            signer = None
+    _attest_cache["signer"] = signer
+    return signer
+
+
+def _sign_digest(digest_hex: str) -> "dict | None":
+    """EIP-191 personal_sign of an artifact's sha256 hex, so a third party can ecrecover the
+    signer and check it equals attest_signer_address(). Returns None if unsigned."""
+    s = _attest_signer()
+    if not s:
+        return None
+    from eth_account import Account
+    from eth_account.messages import encode_defunct
+    sig = Account.sign_message(encode_defunct(text=digest_hex), s["key"]).signature.hex()
+    if not sig.startswith("0x"):
+        sig = "0x" + sig
+    return {"scheme": "eip191-secp256k1", "signer": s["address"],
+            "signed_digest": digest_hex, "signature": sig,
+            "verify": "ecrecover EIP-191 of signed_digest; must equal signer "
+                      "(the operator's published attestation address)"}
+
+
 # ── URL liveness / tamper monitor + content-existence attestation (SSRF-guarded) ───────
 
 def url_precheck(params: dict) -> "tuple[int, dict] | None":
@@ -595,6 +665,11 @@ def content_attestation(params: dict, *, rpc_url: str = BASE_RPC) -> dict:
                         "target was not 2xx; recorded observed status but no content is attested"),
     }
     body["artifact_sha256"] = _canonical_hash(body)
+    # Publicly-verifiable operator signature over the artifact hash (if a signing key is set):
+    # turns "we assert" into "we assert AND anyone can recover our published signer".
+    sig = _sign_digest(body["artifact_sha256"])
+    if sig:
+        body["operator_signature"] = sig
     return body
 
 
