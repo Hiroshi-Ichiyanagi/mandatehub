@@ -223,6 +223,12 @@ Never pay more than the quoted amount. If a call returns 503, the data was stale
 and you were not charged — do not retry in a tight loop.
 ```
 
+**LangChain / CrewAI** — `examples/agent_tools.py` exposes the same `discover` / `preview` /
+`purchase` as native tools for either framework (`langchain_tools()`, `crewai_tools()`); the
+framework imports are optional. **Colab quickstart** (free, no wallet):
+[`examples/mandatehub_quickstart.ipynb`](https://colab.research.google.com/github/Hiroshi-Ichiyanagi/mandatehub/blob/main/examples/mandatehub_quickstart.ipynb)
+discovers the catalog and previews 402 terms without spending anything.
+
 **CLI / library** — the same path an agent takes, from a shell:
 
 ```bash
