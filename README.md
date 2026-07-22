@@ -172,6 +172,66 @@ python examples/x402_facilitator.py             # live HTTP 402 flow gated by a 
 python examples/x402_best_exec.py               # best-exec x402 scheme + offline re-verify
 ```
 
+## Agent integration (buy data & proofs from an AI agent)
+
+The live service ([mandatehub.obolpay.xyz](https://mandatehub.obolpay.xyz)) is built to be
+consumed by autonomous agents. It self-describes over the well-known machine endpoints, ships
+an MCP server, and pays with the same client library a human would use.
+
+**Machine discovery (free, always in sync with the live catalog):**
+
+```bash
+curl -s https://mandatehub.obolpay.xyz/.well-known/agents.json      # compact agent catalog
+curl -s https://mandatehub.obolpay.xyz/.well-known/ai-plugin.json   # plugin manifest (auth: none)
+curl -s https://mandatehub.obolpay.xyz/openapi.json                 # OpenAPI 3.1 (per-path x-402-payment)
+```
+
+**MCP server** — add mandatehub as native tools (`discover` / `openapi` / `preview` /
+`purchase`) in any MCP client (Claude Desktop, Cursor, …):
+
+```jsonc
+// claude_desktop_config.json
+{
+  "mcpServers": {
+    "mandatehub": {
+      "command": "python",
+      "args": ["/absolute/path/to/examples/mcp_server.py"],
+      "env": { "MANDATEHUB_AGENT_PRIVATE_KEY": "0x…" }   // a Base wallet with USDC; omit to preview only
+    }
+  }
+}
+```
+
+`pip install "mcp[cli]" "mandatehub[evm]"` first. `preview(path)` reads the 402 terms and spends
+nothing; `purchase(path)` settles the quoted USDC and returns `{data, settlement, proofOfMandate}`.
+
+**System-prompt template** — drop this into an agent that should pay for verifiable data:
+
+```text
+You can buy verifiable data and verification results from mandatehub, a machine-payable
+service over x402 (HTTP 402, real USDC on Base). Each call costs ~0.01 USDC and returns
+canonically-hashed JSON plus an on-chain settlement tx and a ProofOfMandate.
+
+To use it:
+1. Read https://mandatehub.obolpay.xyz/.well-known/agents.json to list products and prices.
+2. GET a product URL. You'll get HTTP 402 with an `accepts` payment challenge — nothing is
+   charged yet. Products that can't be served return 503 first, also free.
+3. Sign an x402 `exact` payment for the quoted amount and resend it in the X-PAYMENT header.
+4. On 200, use `data`; keep `settlement.transaction` and `proofOfMandate` as your receipt.
+
+Never pay more than the quoted amount. If a call returns 503, the data was stale/unavailable
+and you were not charged — do not retry in a tight loop.
+```
+
+**CLI / library** — the same path an agent takes, from a shell:
+
+```bash
+pip install 'mandatehub[evm]'
+python examples/x402_pay.py --quote-only https://mandatehub.obolpay.xyz/quote   # see terms, spend nothing
+export MANDATEHUB_AGENT_PRIVATE_KEY=0x…                                          # a funded Base wallet
+python examples/x402_pay.py https://mandatehub.obolpay.xyz/quote                # pay + get data + proof
+```
+
 ## Running it: an x402-compatible facilitator
 
 [x402](https://github.com/coinbase/x402) is Coinbase's HTTP-`402` payment protocol for agents
