@@ -164,3 +164,21 @@ The old Mac launchd jobs are unloaded with `-w` (disabled permanently); the Mac'
 remains as an archive. Note: `monitor.py`'s launchd check reports `launchd=?` on Linux —
 cosmetic; systemd's `Restart=always` covers process supervision there.
 
+## Product catalog & enabling `govern-verify`
+
+The operator serves a `/product/<name>` catalog (see `/` info). Four products are live
+everywhere (`fx`, `qswap`, `audit-verify`, `verify-tx`). The fifth, **`govern-verify`**, is
+availability-gated on the `govern-verify` binary (platform-specific — present on the Mac at
+`~/dev/govern/target/release/govern-verify`; absent on the Linux VPS, so it returns 503 and is
+never charged for). To enable it on a host:
+
+1. Build the linux binary from the private `govern` repo (`cargo build --release -p
+   govern-verify`) or copy a matching-arch binary onto the host.
+2. Point the operator at it: `Environment=MANDATEHUB_GOVERN_VERIFY=/path/to/govern-verify` in
+   the systemd unit (or the launchd plist), then restart. Availability flips to true; the
+   vendored sample bundle under `deploy/local/assets/govern-sample/` is the self-check.
+
+Products with input take query params (`/product/fx?from=USD&to=JPY&amount=…`,
+`/product/verify-tx?tx=0x…`, `/product/audit-verify?data=<base64>`). Each settles a separate
+resource URL at CDP, so each can be independently listed in the Bazaar.
+
