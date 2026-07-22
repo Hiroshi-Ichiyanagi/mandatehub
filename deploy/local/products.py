@@ -198,40 +198,113 @@ def keystone_verify(params: dict) -> dict:
             "verified_with_key": key is not None}
 
 
-# ── 5. govern offline bundle verification (Rust binary, availability-gated) ─────────────
+# ── 5. govern offline bundle verification (vendored PYTHON pyverify — runs anywhere) ────
 
-def _govern_binary() -> str | None:
+_PYVERIFY = _ASSETS / "pyverify"
+
+
+def _pyverify_available() -> bool:
+    return (_PYVERIFY / "__main__.py").exists() and (_PYVERIFY / "genuine.bundle").exists()
+
+
+def _run_pyverify(bundle_dir: Path) -> dict:
     import os
-    import shutil
-    env = os.environ.get("MANDATEHUB_GOVERN_VERIFY")
-    if env and Path(env).exists():
-        return env
-    for cand in (Path.home() / "dev/govern/target/release/govern-verify",):
-        if cand.exists():
-            return str(cand)
-    return shutil.which("govern-verify")
+    env = {**os.environ, "PYTHONPATH": str(_ASSETS)}
+    r = subprocess.run([sys.executable, "-m", "pyverify", str(bundle_dir)],
+                       capture_output=True, text=True, timeout=60, env=env)
+    return {"verdict": "OFFLINE-VERIFIED" if r.returncode == 0 else "FAIL",
+            "exit_code": r.returncode,
+            "detail": (r.stdout or r.stderr).strip().splitlines()[-1:][0][:200] if (r.stdout or r.stderr).strip() else "",
+            "claims_checked": ["hash_chain", "ed25519_receipts", "witness_binding",
+                               "sth_consistency"]}
 
 
-def _govern_available() -> bool:
-    return _govern_binary() is not None
+def govern_verify(params: dict) -> dict:
+    """Offline-verify a govern evidence bundle via the vendored pure-Python verifier.
 
-
-def govern_verify_sample(params: dict) -> dict:
-    """Offline-verify a govern execution bundle. Today serves the vendored sample bundle
-    (proves the capability + this host's verifier). A future POST/upload layer lets callers
-    submit their own bundle. Gated on the govern-verify binary being present on the host."""
-    binary = _govern_binary()
-    bundle = _ASSETS / "govern-sample"
+    Modes: ?bundle=genuine|tampered (vendored demo bundles — proves the verifier PASSES a
+    genuine bundle and FAILS a tampered one), or ?data=<base64 zip of a bundle dir, ≤256KB>
+    to verify the caller's own bundle.
+    """
+    import io
+    import tempfile
+    import zipfile
+    which = (params.get("bundle") or "").lower()
+    if which in ("genuine", "tampered"):
+        out = _run_pyverify(_PYVERIFY / f"{which}.bundle")
+        out.update({"product": "govern-bundle-verify", "bundle": f"vendored-{which}"})
+        return out
+    raw = params.get("data")
+    if not raw:
+        return {"error": "pass ?bundle=genuine|tampered (demo) or "
+                         "?data=<base64 zip of your bundle dir, ≤256KB>"}
     try:
-        r = subprocess.run([binary, str(bundle)], capture_output=True, text=True, timeout=30)
+        blob = base64.b64decode(raw)
+        if len(blob) > 256 * 1024:
+            return {"product": "govern-bundle-verify", "error": "bundle zip exceeds 256KB cap"}
+        with tempfile.TemporaryDirectory(prefix="mh-bundle-") as td:
+            with zipfile.ZipFile(io.BytesIO(blob)) as z:
+                for n in z.namelist():           # zip-slip guard
+                    if n.startswith("/") or ".." in n:
+                        return {"product": "govern-bundle-verify", "error": "unsafe zip paths"}
+                z.extractall(td)
+            root = Path(td)
+            entries = [e for e in root.iterdir() if e.is_dir()]
+            bundle = entries[0] if len(entries) == 1 and not (root / "manifest.json").exists() else root
+            out = _run_pyverify(bundle)
+            out.update({"product": "govern-bundle-verify", "bundle": "caller-submitted"})
+            return out
     except Exception as e:
-        return {"product": "govern-bundle-verify", "verdict": "VERIFIER_ERROR",
-                "detail": str(e)[:100]}
-    return {"product": "govern-bundle-verify", "bundle": "vendored-sample",
-            "verdict": "OFFLINE-VERIFIED" if r.returncode == 0 else "FAIL",
-            "exit_code": r.returncode, "detail": (r.stdout or r.stderr).strip().splitlines()[-1:],
-            "claims_verified": ["chain_integrity", "policy_attestation", "witness_binding",
-                                "ed25519_signatures"] if r.returncode == 0 else []}
+        return {"product": "govern-bundle-verify", "error": f"malformed zip: {type(e).__name__}"}
+
+
+# ── 6. openunit — population-weighted unit of account (vendored, live re-verified) ─────
+
+_OPENUNIT = _ASSETS / "openunit"
+
+
+def _openunit_available() -> bool:
+    return all((_OPENUNIT / f).exists() for f in ("openunit.py", "artifact.json", "spec.json"))
+
+
+def openunit_value(params: dict) -> dict:
+    if str(_OPENUNIT) not in sys.path:
+        sys.path.insert(0, str(_OPENUNIT))
+    import openunit as OU  # vendored, stdlib-only
+    art = json.loads((_OPENUNIT / "artifact.json").read_text())
+    spec = json.loads((_OPENUNIT / "spec.json").read_text())
+    verified = bool(OU.verify_artifact(art, spec))   # re-verified LIVE on every sale
+    body = {"product": "openunit-valuation",
+            "value_usd": art["value_usd"], "numeraire": art["numeraire"],
+            "method": f'{art["method"]} {art["method_version"]}',
+            "weight_basis": art["weight_basis"], "vintage": art["weight_vintage_label"],
+            "input_digest": art["input_digest"], "artifact_hash": art["artifact_hash"],
+            "reverified_now": verified}
+    body["artifact_sha256"] = _canonical_hash(body)
+    return body
+
+
+# ── 7. kairos — JP equities convergence scores (static snapshot, honest as-of) ─────────
+
+_KAIROS = _ASSETS / "kairos" / "kcs-snapshot.json"
+
+
+def _kairos_available() -> bool:
+    return _KAIROS.exists()
+
+
+def kairos_scores(params: dict) -> dict:
+    snap = json.loads(_KAIROS.read_text())
+    try:
+        top_n = max(1, min(300, int(params.get("top") or 25)))
+    except ValueError:
+        top_n = 25
+    body = {"product": "kairos-kcs-snapshot", "as_of": snap["as_of"],
+            "staleness_note": "static research snapshot; NOT live market data, NOT advice",
+            "method": snap["method"], "universe_size": snap["universe_size"],
+            "top": snap["top"][:top_n]}
+    body["artifact_sha256"] = _canonical_hash(body)
+    return body
 
 
 # ── on-chain settlement verification (Base USDC) — product AND self-check ───────────────
@@ -289,9 +362,18 @@ CATALOG: dict[str, Product] = {
         "Transfer log).",
         lambda: True, lambda p: verify_usdc_tx((p.get("tx") or "")), "?tx=0x<64-hex>"),
     "govern-verify": Product(
-        "Offline verification of a govern execution bundle (chain/policy/witness/signatures). "
-        "Requires the govern-verify binary on this host.",
-        _govern_available, govern_verify_sample, ""),
+        "Offline verification of a govern evidence bundle (hash chain, Ed25519 receipts, "
+        "witness binding, STH consistency) — pure-Python verifier; demo bundles or submit "
+        "your own as a base64 zip.",
+        _pyverify_available, govern_verify, "?bundle=genuine|tampered or ?data=<base64 zip>"),
+    "openunit": Product(
+        "openunit valuation — a deterministic, population-weighted unit of account "
+        "(UN-WPP + WB-PPP vintages), artifact re-verified live on every sale.",
+        _openunit_available, openunit_value, ""),
+    "kairos": Product(
+        "Kairos Convergence Scores for ~2000 JP equities (multi-pillar tailwind convergence; "
+        "static research snapshot with explicit as-of; not advice).",
+        _kairos_available, kairos_scores, "?top=1..300"),
 }
 
 
