@@ -590,6 +590,74 @@ def _sign_digest(digest_hex: str) -> "dict | None":
                       "(the operator's published attestation address)"}
 
 
+# ── on-chain commitment tier: write the content hash into a Base transaction ────────────
+# The base attestation is operator-signed (verifiable, but the timestamp rests on our word).
+# This tier makes the commitment IMMUTABLE: a value-0 self-send whose calldata is the artifact
+# hash, mined into a block. Anyone can later read that tx and see "this 32-byte hash was
+# committed at block N (time T) by the published operator address" — no trust in us at all.
+# It spends real gas, so it is a distinct, availability-gated product: OFF until the operator's
+# attestation address holds ETH on Base.
+
+BASE_CHAIN_ID = 8453
+COMMIT_MIN_BALANCE_WEI = 5 * 10 ** 13   # ~0.00005 ETH: enough headroom for many cheap Base txs
+COMMIT_GAS_LIMIT = 30_000               # value-0 self-send + 32 bytes calldata (~21.5k) + margin
+
+
+def _committer_available(rpc_url: str = BASE_RPC) -> bool:
+    """True only when the on-chain tier can actually deliver: signing key present AND its address
+    holds enough ETH on Base to pay gas. Cached so unpaid catalog renders can't hammer the RPC."""
+    def probe() -> bool:
+        s = _attest_signer()
+        if not s:
+            return False
+        bal = _rpc(rpc_url, "eth_getBalance", [s["address"], "latest"])
+        return bal is not None and int(bal, 16) >= COMMIT_MIN_BALANCE_WEI
+    return _cached_avail("committer", probe)
+
+
+def _commit_hash_onchain(digest_hex: str, *, rpc_url: str = BASE_RPC) -> dict:
+    """Broadcast a Base tx committing `digest_hex` (32-byte hex) in calldata, from the operator's
+    attestation key to itself (value 0). Returns {tx_hash, block_number, committer, chain_id,
+    calldata, status}. Raises on inability to build/sign; broadcast/receipt issues are reported
+    in the returned dict (never crash the paid path)."""
+    s = _attest_signer()
+    if not s:
+        raise RuntimeError("no committer key")
+    from eth_account import Account
+    addr = s["address"]
+    data = "0x" + digest_hex
+    nonce = _rpc(rpc_url, "eth_getTransactionCount", [addr, "pending"])
+    blk = _latest_block(rpc_url)
+    tip = 1_000_000                               # 0.001 gwei priority — ample on Base
+    max_fee = blk["base_fee_per_gas"] * 2 + tip
+    tx = {"to": addr, "value": 0, "data": data, "nonce": int(nonce, 16),
+          "chainId": BASE_CHAIN_ID, "gas": COMMIT_GAS_LIMIT,
+          "maxFeePerGas": max_fee, "maxPriorityFeePerGas": tip, "type": 2}
+    signed = Account.sign_transaction(tx, s["key"])
+    raw = getattr(signed, "raw_transaction", None) or signed.rawTransaction
+    raw_hex = raw.hex()
+    if not raw_hex.startswith("0x"):
+        raw_hex = "0x" + raw_hex
+    txh = _rpc(rpc_url, "eth_sendRawTransaction", [raw_hex])
+    out = {"committer": addr, "chain_id": BASE_CHAIN_ID, "calldata": data,
+           "tx_hash": txh, "block_number": None, "status": "broadcast"}
+    if not txh:
+        out["status"] = "broadcast_failed"
+        return out
+    # Short confirmation only: the operator is single-threaded, so we must not block other buyers
+    # for long. Base blocks are ~2s; a couple of polls usually catch it. If not yet mined we
+    # return the broadcast tx_hash with status "pending" — still a valid commitment to verify.
+    for _ in range(3):
+        time.sleep(2)
+        rcpt = _rpc(rpc_url, "eth_getTransactionReceipt", [txh])
+        if rcpt:
+            out["block_number"] = int(rcpt["blockNumber"], 16)
+            out["status"] = "mined" if rcpt.get("status") == "0x1" else "reverted"
+            return out
+    out["status"] = "pending"                      # broadcast but not yet mined; tx_hash is valid
+    return out
+
+
 # ── URL liveness / tamper monitor + content-existence attestation (SSRF-guarded) ───────
 
 def url_precheck(params: dict) -> "tuple[int, dict] | None":
@@ -673,6 +741,52 @@ def content_attestation(params: dict, *, rpc_url: str = BASE_RPC) -> dict:
     return body
 
 
+def content_attestation_onchain(params: dict, *, rpc_url: str = BASE_RPC) -> dict:
+    """content-attestation PLUS an immutable on-chain commitment: the artifact hash is written
+    into a Base transaction's calldata, so the timestamp no longer rests on the operator's word.
+    Availability-gated on the committer holding gas. Only 2xx targets are committed on-chain
+    (nothing is committed for a non-retrievable target). Also carries the EIP-191 signature."""
+    from netfetch import safe_fetch, FetchError
+    anchor = _latest_block(rpc_url)
+    try:
+        r = safe_fetch((params.get("url") or "").strip())
+    except FetchError as e:
+        return {"product": "content-attestation-onchain", "refused": True, "reason": str(e)}
+    status = r.get("status")
+    attested = status is not None and 200 <= status < 300
+    body = {
+        "product": "content-attestation-onchain",
+        "url": r["url"], "host": r.get("host"),
+        "observed_status": status,
+        "attested": attested,
+        "content_sha256": r.get("body_sha256"),
+        "content_bytes": r.get("body_bytes"),
+        "content_type": r.get("headers", {}).get("content-type"),
+        "truncated": r.get("truncated", False),
+        "anchor": {"chain": "base-mainnet", "block_number": anchor["number"],
+                   "block_hash": anchor["hash"], "block_timestamp": anchor["timestamp"]},
+        "attestation": ("operator observed the above content bytes at/around this Base block; "
+                        "attests existence & integrity of the bytes, NOT their truthfulness"
+                        if attested else
+                        "target was not 2xx; recorded observed status but nothing committed"),
+    }
+    body["artifact_sha256"] = _canonical_hash(body)
+    sig = _sign_digest(body["artifact_sha256"])
+    if sig:
+        body["operator_signature"] = sig
+    # Immutable commitment of the artifact hash. Only for retrievable (2xx) content; broadcast
+    # failures are reported, never raised, so a paid caller always gets the signed attestation.
+    if attested:
+        try:
+            body["onchain_commitment"] = _commit_hash_onchain(
+                body["artifact_sha256"], rpc_url=rpc_url)
+        except Exception as e:  # noqa: BLE001
+            body["onchain_commitment"] = {"status": "error", "detail": str(e)[:120]}
+        body["commit_verify"] = ("read the tx at onchain_commitment.tx_hash on Base; its calldata "
+                                 "equals 0x+artifact_sha256 and its block timestamps the commitment")
+    return body
+
+
 # ── the catalog ─────────────────────────────────────────────────────────────────────
 
 CATALOG: dict[str, Product] = {
@@ -720,8 +834,14 @@ CATALOG: dict[str, Product] = {
     "content-attestation": Product(
         "Content-existence attestation: fetch a URL, hash its bytes, and anchor to the current "
         "Base block (on-chain time). Proves the content was observed at that time — not that it "
-        "is true. `attested` is true only for a 2xx target.",
+        "is true. `attested` is true only for a 2xx target. Carries a verifiable operator signature.",
         _gas_available, content_attestation, "?url=<percent-encoded https URL, public host>", precheck=url_precheck),
+    "content-attestation-onchain": Product(
+        "Attestation with an IMMUTABLE on-chain commitment: the content hash is written into a "
+        "Base transaction's calldata, so the timestamp rests on-chain, not on our word. Returns "
+        "the commitment tx. (Available only while the operator's attestation address holds gas.)",
+        _committer_available, content_attestation_onchain,
+        "?url=<percent-encoded https URL, public host>", precheck=url_precheck),
 }
 
 

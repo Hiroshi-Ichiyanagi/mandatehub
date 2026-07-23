@@ -249,6 +249,107 @@ def test_attestation_signature_roundtrip(tmp_path, monkeypatch):
     assert P.attest_signer_address() is None
 
 
+def test_committer_availability_gated_on_balance(monkeypatch):
+    """The on-chain tier is available ONLY when the attestation address holds enough gas;
+    the balance probe is cached (no per-render RPC hammering)."""
+    P, _ = _load(monkeypatch)
+    monkeypatch.setenv("MANDATEHUB_ATTEST_KEY_FILE", "/nonexistent")
+    P._attest_cache.clear(); P._avail_cache.clear()
+    assert P._committer_available() is False          # no key -> unavailable
+
+    # with a key: gated purely on balance vs COMMIT_MIN_BALANCE_WEI
+    import tempfile, os
+    kf = tempfile.NamedTemporaryFile("w", suffix=".key", delete=False)
+    kf.write("0x" + "22" * 32); kf.close()
+    monkeypatch.setenv("MANDATEHUB_ATTEST_KEY_FILE", kf.name)
+    P._attest_cache.clear(); P._avail_cache.clear()
+    try:
+        from eth_account import Account  # noqa: F401
+    except Exception:
+        import pytest; pytest.skip("eth-account not installed")
+
+    calls = {"n": 0}
+    def rpc_rich(url, m, p):
+        calls["n"] += 1
+        return hex(P.COMMIT_MIN_BALANCE_WEI + 1) if m == "eth_getBalance" else None
+    monkeypatch.setattr(P, "_rpc", rpc_rich)
+    for _ in range(5):
+        assert P._committer_available() is True
+    assert calls["n"] == 1                              # cached within TTL
+
+    P._avail_cache.clear()
+    monkeypatch.setattr(P, "_rpc", lambda u, m, p: hex(P.COMMIT_MIN_BALANCE_WEI - 1))
+    assert P._committer_available() is False           # underfunded -> unavailable
+    os.unlink(kf.name)
+
+
+def test_content_attestation_onchain_commit(tmp_path, monkeypatch):
+    """On-chain tier builds/signs/broadcasts a Base tx whose calldata is 0x+artifact hash, polls
+    the receipt, and reports the commitment; non-2xx targets commit nothing; broadcast failure is
+    reported not raised."""
+    P, netfetch = _load(monkeypatch)
+    try:
+        from eth_account import Account
+    except Exception:
+        import pytest; pytest.skip("eth-account not installed")
+
+    kf = tmp_path / "attest.key"; kf.write_text("0x" + "33" * 32)
+    monkeypatch.setenv("MANDATEHUB_ATTEST_KEY_FILE", str(kf))
+    P._attest_cache.clear()
+    addr = P.attest_signer_address()
+
+    monkeypatch.setattr(P, "time", type("T", (), {
+        "sleep": staticmethod(lambda s: None), "time": staticmethod(lambda: 0.0)})())
+    sent = {}
+    def fake_rpc(url, m, params):
+        if m == "eth_getBlockByNumber":
+            return {"number": "0x10", "hash": "0xabc", "timestamp": "0x64",
+                    "baseFeePerGas": hex(1_000_000), "gasUsed": "0x0", "gasLimit": "0x1"}
+        if m == "eth_getTransactionCount":
+            return "0x0"
+        if m == "eth_sendRawTransaction":
+            sent["raw"] = params[0]
+            return "0x" + "ab" * 32
+        if m == "eth_getTransactionReceipt":
+            return {"blockNumber": "0x11", "status": "0x1"}
+        return None
+    monkeypatch.setattr(P, "_rpc", fake_rpc)
+    monkeypatch.setattr(netfetch, "safe_fetch", lambda u, **k: {
+        "url": u, "host": "h", "status": 200, "reason": "OK", "headers": {},
+        "body_sha256": "cafe", "body_bytes": 4, "truncated": False})
+
+    a = P.content_attestation_onchain({"url": "https://example.com"})
+    c = a["onchain_commitment"]
+    assert c["status"] == "mined" and c["block_number"] == 17
+    assert c["tx_hash"] == "0x" + "ab" * 32 and c["committer"] == addr
+    assert c["calldata"] == "0x" + a["artifact_sha256"]        # the hash IS the calldata
+    assert sent["raw"].startswith("0x")                        # a real signed tx was broadcast
+    # recover the signer of the raw tx to confirm it came from the committer address
+    from eth_account import Account as _A
+    assert _A.recover_transaction(sent["raw"]) == addr
+
+    # non-2xx: nothing committed
+    monkeypatch.setattr(netfetch, "safe_fetch",
+                        lambda u, **k: {"url": u, "host": "h", "status": 500, "reason": "err",
+                                        "headers": {}, "body_sha256": "x", "body_bytes": 1,
+                                        "truncated": False})
+    a2 = P.content_attestation_onchain({"url": "https://example.com"})
+    assert a2["attested"] is False and "onchain_commitment" not in a2
+
+    # broadcast failure is reported, not raised (paid caller still gets the signed attestation)
+    def rpc_no_broadcast(url, m, params):
+        if m == "eth_sendRawTransaction":
+            return None
+        return fake_rpc(url, m, params)
+    monkeypatch.setattr(P, "_rpc", rpc_no_broadcast)
+    monkeypatch.setattr(netfetch, "safe_fetch", lambda u, **k: {
+        "url": u, "host": "h", "status": 200, "reason": "OK", "headers": {},
+        "body_sha256": "cafe", "body_bytes": 4, "truncated": False})
+    a3 = P.content_attestation_onchain({"url": "https://example.com"})
+    assert a3["onchain_commitment"]["status"] == "broadcast_failed"
+    assert "operator_signature" in a3                          # signed attestation still delivered
+
+
 def test_catalog_wave3_registered(monkeypatch):
     """The four new products are registered with the right gates and prechecks."""
     P, _ = _load(monkeypatch)
