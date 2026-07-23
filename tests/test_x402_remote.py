@@ -238,8 +238,16 @@ class TestSecurity:
 
 class TestEvmExtra:
     def test_eth_account_signer_missing_extra(self):
-        # eth-account is NOT installed in the test env -> constructing raises a clear error,
-        # while importing the core succeeds without the extra.
+        # This tests the "extra not installed" path: constructing raises a clear error while the
+        # core imports fine without the extra. It is only meaningful when eth-account is ABSENT;
+        # skip where the [evm] extra is present (e.g. a dev venv) so the suite passes in both.
+        try:
+            import eth_account  # noqa: F401
+        except Exception:
+            pass
+        else:
+            pytest.skip("eth-account is installed; the missing-extra path can't be exercised")
+
         from mandatehub.signers import EthAccountSigner, MissingExtraError
 
         with pytest.raises(MissingExtraError):
