@@ -110,6 +110,28 @@ def test_guard_verify_precheck_refuses_free(monkeypatch):
     assert pre({"data": _data(policy={"per_tx_max_cents": 100000})}) is None
 
 
+def test_guard_verify_rejects_mistyped_values_free(monkeypatch):
+    """JSON lets float/bool/string slip where int/list is meant; those would pass field-name
+    checks and yield a confusing PAID verdict (e.g. a string allowlist -> frozenset(chars)).
+    They must be refused FREE (400) in precheck instead."""
+    P = _load(monkeypatch)
+    pre = P.guard_precheck
+    # string where a list is meant (the frozenset(chars) trap)
+    assert pre({"data": _data(policy={"payee_allowlist": "0xB"})})[0] == 400
+    assert pre({"data": _data(policy={"payee_denylist": "0xB"})})[0] == 400
+    # float / bool amount (bool is an int subclass — must be rejected explicitly)
+    assert pre({"data": _data(candidate={"amount_cents": 10.5})})[0] == 400
+    assert pre({"data": _data(candidate={"amount_cents": True})})[0] == 400
+    # non-int at_ms
+    assert pre({"data": _data(candidate={"at_ms": "soon"})})[0] == 400
+    # wrong-typed state / policy flags
+    assert pre({"data": _data(state={"seen_payee": "yes"})})[0] == 400
+    assert pre({"data": _data(policy={"review_new_payee": 1})})[0] == 400
+    # valid list allowlist and plain request still pass
+    assert pre({"data": _data(policy={"payee_allowlist": ["0xB"]})}) is None
+    assert pre({"data": _data()}) is None
+
+
 def test_guard_verify_registered_and_signed(monkeypatch, tmp_path):
     """Catalog registration + operator signature when the attest key is configured."""
     P = _load(monkeypatch)
