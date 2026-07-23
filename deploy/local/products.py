@@ -787,6 +787,115 @@ def content_attestation_onchain(params: dict, *, rpc_url: str = BASE_RPC) -> dic
     return body
 
 
+# ── guard-verify: deterministic payment-guard decision as a product (vendored obol-guard) ──
+
+_OBOLGUARD = _ASSETS / "obolguard"
+GUARD_MAX_B64 = 64 * 1024   # request payload cap (b64 chars)
+
+_GUARD_POLICY_FIELDS = {
+    "per_tx_max_cents", "min_amount_cents", "window_seconds", "window_spend_cap_cents",
+    "window_count_cap", "daily_cap_cents", "payee_allowlist", "payee_denylist",
+    "per_tx_review_cents", "daily_review_cents", "window_review_count", "review_new_payee",
+}
+_GUARD_STATE_FIELDS = {"spent_window_cents", "count_window", "spent_daily_cents",
+                       "seen_payee", "nonce_used"}
+_GUARD_CAND_REQUIRED = {"mandate_id", "payer", "payee", "amount_cents", "at_ms"}
+_GUARD_CAND_FIELDS = _GUARD_CAND_REQUIRED | {"nonce", "purpose", "currency"}
+
+
+def _guardverify_available() -> bool:
+    return (_OBOLGUARD / "guardcore.py").exists()
+
+
+def _guard_load(params: dict) -> "tuple[dict, dict, dict]":
+    """Parse + validate ?data=<b64 json {policy, candidate, state}>. Pure & network-free
+    (usable in precheck). Raises ValueError with a customer-safe message."""
+    raw = params.get("data") or ""
+    if not raw:
+        raise ValueError("pass ?data=<base64 json {policy, candidate, state}>")
+    if len(raw) > GUARD_MAX_B64:
+        raise ValueError(f"data too large (<= {GUARD_MAX_B64} b64 chars)")
+    try:
+        obj = json.loads(base64.b64decode(raw, validate=True))
+    except Exception:
+        raise ValueError("data must be valid base64-encoded JSON") from None
+    if not isinstance(obj, dict):
+        raise ValueError("data must decode to a JSON object")
+    pol = obj.get("policy") or {}
+    cand = obj.get("candidate") or {}
+    state = obj.get("state") or {}
+    for name, d, allowed in (("policy", pol, _GUARD_POLICY_FIELDS),
+                             ("candidate", cand, _GUARD_CAND_FIELDS),
+                             ("state", state, _GUARD_STATE_FIELDS)):
+        if not isinstance(d, dict):
+            raise ValueError(f"{name} must be a JSON object")
+        unknown = set(d) - allowed
+        if unknown:
+            raise ValueError(f"unknown {name} field(s): {sorted(unknown)}")
+    missing = _GUARD_CAND_REQUIRED - set(cand)
+    if missing:
+        raise ValueError(f"candidate missing required field(s): {sorted(missing)}")
+    return pol, cand, state
+
+
+def guard_precheck(params: dict) -> "tuple[int, dict] | None":
+    """Free (pre-settlement) refusal of malformed input, incl. an invalid policy — the
+    evaluation itself is pure, so full validation costs nothing here."""
+    try:
+        pol, cand, state = _guard_load(params)
+        _guard_evaluate(pol, cand, state)      # dry-run: any PolicyError/type error surfaces now
+    except ValueError as e:
+        return 400, {"error": str(e)[:300]}
+    except Exception as e:  # noqa: BLE001 — vendored PolicyError etc.
+        return 400, {"error": f"{type(e).__name__}: {str(e)[:250]}"}
+    return None
+
+
+def _guard_evaluate(pol: dict, cand: dict, state: dict):
+    if str(_OBOLGUARD) not in sys.path:
+        sys.path.insert(0, str(_OBOLGUARD))
+    import guardcore as G  # vendored, pure stdlib
+    policy = G.GuardPolicy(**{
+        **pol,
+        "payee_allowlist": (frozenset(pol["payee_allowlist"])
+                            if pol.get("payee_allowlist") is not None else None),
+        "payee_denylist": frozenset(pol.get("payee_denylist") or ()),
+    })
+    candidate = G.Candidate(**{k: cand[k] for k in cand})
+    snapshot = G.StateSnapshot(**{k: state[k] for k in state})
+    return G.evaluate(policy, candidate, snapshot), policy, candidate, snapshot
+
+
+def guard_verify(params: dict) -> dict:
+    """Deterministic payment-guard decision: the caller submits THEIR policy, THEIR spend
+    snapshot, and a candidate payment; we return the obol-guard verdict (ALLOW/DENY/REVIEW),
+    canonically hashed and operator-signed. A pure evaluation of the caller's own policy —
+    NOT payment advice; identical input always yields the identical, byte-stable verdict."""
+    try:
+        pol, cand, state = _guard_load(params)
+        decision, *_ = _guard_evaluate(pol, cand, state)
+    except Exception as e:  # noqa: BLE001 — precheck normally catches these for free
+        return {"product": "guard-verify", "error": f"{type(e).__name__}: {str(e)[:250]}"}
+    body = {
+        "product": "guard-verify",
+        "engine": "obol-guard guardcore 0.1.0 (vendored, pure/deterministic/fail-closed)",
+        "decision": decision.verdict.value,
+        "reason": decision.reason,
+        "triggered": list(decision.triggered),
+        "policy_sha256": _canonical_hash(pol),
+        "candidate_sha256": _canonical_hash(cand),
+        "state_sha256": _canonical_hash(state),
+        "disclaimer": "deterministic evaluation of the submitted policy against the submitted "
+                      "snapshot; not payment advice — hard violations are DENY (fail-closed), "
+                      "soft thresholds are REVIEW (human approval recommended)",
+    }
+    body["artifact_sha256"] = _canonical_hash(body)
+    sig = _sign_digest(body["artifact_sha256"])
+    if sig:
+        body["operator_signature"] = sig
+    return body
+
+
 # ── the catalog ─────────────────────────────────────────────────────────────────────
 
 CATALOG: dict[str, Product] = {
@@ -842,6 +951,12 @@ CATALOG: dict[str, Product] = {
         "the commitment tx. (Available only while the operator's attestation address holds gas.)",
         _committer_available, content_attestation_onchain,
         "?url=<percent-encoded https URL, public host>", precheck=url_precheck),
+    "guard-verify": Product(
+        "Deterministic payment-guard decision (vendored obol-guard): submit your policy, spend "
+        "snapshot, and a candidate payment; get the fail-closed ALLOW/DENY/REVIEW verdict, "
+        "canonically hashed and operator-signed. Your policy, our reference evaluation — not advice.",
+        _guardverify_available, guard_verify,
+        "?data=<base64 json {policy, candidate, state}>", precheck=guard_precheck),
 }
 
 
