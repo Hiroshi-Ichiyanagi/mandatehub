@@ -24,3 +24,8 @@ deploy/cloudflare/mandatehub/
 
 # vendored govern verifier binary is platform-specific; ship per-host, not in git
 deploy/local/assets/**/__pycache__/
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
