@@ -835,7 +835,34 @@ def _guard_load(params: dict) -> "tuple[dict, dict, dict]":
     missing = _GUARD_CAND_REQUIRED - set(cand)
     if missing:
         raise ValueError(f"candidate missing required field(s): {sorted(missing)}")
+    # Strict value types: JSON permits float/bool/string where an int/list is meant, which would
+    # otherwise sail past field-name checks and yield a confusing (but paid-for) verdict — e.g.
+    # a string payee_allowlist becoming frozenset(chars), or a float/bool amount. Reject here
+    # (pure → runs in precheck → refused free) so a caller is never charged for a mistyped request.
+    _guard_types(cand, "candidate", str_fields=("mandate_id", "payer", "payee", "nonce",
+                 "purpose", "currency"), int_fields=("amount_cents", "at_ms"))
+    _guard_types(state, "state", int_fields=("spent_window_cents", "count_window",
+                 "spent_daily_cents"), bool_fields=("seen_payee", "nonce_used"))
+    _guard_types(pol, "policy", bool_fields=("review_new_payee",),
+                 list_fields=("payee_allowlist", "payee_denylist"))
     return pol, cand, state
+
+
+def _guard_types(d: dict, name: str, *, str_fields=(), int_fields=(), bool_fields=(),
+                 list_fields=()) -> None:
+    for f in str_fields:
+        if f in d and not isinstance(d[f], str):
+            raise ValueError(f"{name}.{f} must be a string")
+    for f in int_fields:
+        if f in d and (isinstance(d[f], bool) or not isinstance(d[f], int)):
+            raise ValueError(f"{name}.{f} must be an integer")
+    for f in bool_fields:
+        if f in d and not isinstance(d[f], bool):
+            raise ValueError(f"{name}.{f} must be a boolean")
+    for f in list_fields:
+        if f in d and d[f] is not None and not (
+                isinstance(d[f], list) and all(isinstance(x, str) for x in d[f])):
+            raise ValueError(f"{name}.{f} must be a list of strings")
 
 
 def guard_precheck(params: dict) -> "tuple[int, dict] | None":
